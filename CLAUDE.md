@@ -16,7 +16,8 @@ plugin and an omp extension around one Go binary. User-facing behaviour is in `R
 | `sounds/<voice>/*.wav` | Bundled default clips, one directory per Kokoro voice (`kokoro_voice` picks one), one clip per category |
 | `docs/specs/` | Design specs: the source of truth for behaviour; update them with behaviour changes |
 | `docs/plans/` | Historical implementation plans; they predate the rename and still use the old name, so don't edit them |
-| `.github/workflows/` | `release.yml` publishes a version tag to `release`; `smoke.yml` runs the Linux and Windows end-to-end check on every push |
+| `.github/workflows/` | `release.yml` publishes a version tag to `release`; `smoke.yml` runs the Linux and Windows end-to-end check on every push; `gitleaks.yml` scans the full history for secrets on every push |
+| `.githooks/pre-commit` | Runs `gitleaks` on staged changes; enable with `git config core.hooksPath .githooks` |
 | `scripts/checkwav/` | Asserts a recorded clip is audible and levelled; the smoke workflow runs it on a spoken name |
 
 ## Build and test
@@ -31,6 +32,9 @@ claude plugin validate .
   for this reason.
 - `bin/*/` is gitignored on `main`; never commit binaries there.
 - `cnw doctor` is the end-to-end check for a local setup.
+- Secrets: `.githooks/pre-commit` and `.github/workflows/gitleaks.yml` both run gitleaks (pinned to
+  8.30.1 by SHA-256 in the workflow). Never bypass the hook with `--no-verify` for a real finding;
+  for a false positive, add a `.gitleaks.toml` allowlist rather than disabling the check.
 
 ## Releases and installs
 

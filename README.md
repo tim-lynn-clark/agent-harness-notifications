@@ -352,8 +352,12 @@ Known limits:
 ## Development
 
 ```bash
+git config core.hooksPath .githooks   # once per clone: gitleaks scans staged changes before each commit
 go test ./...
 ```
+
+The pre-commit hook needs [gitleaks](https://github.com/gitleaks/gitleaks) on `PATH`
+(`brew install gitleaks`) and refuses to commit without it. CI scans the full history on every push.
 
 Design and behaviour: [docs/specs/2026-10-25-notification-wrapper-design.md](docs/specs/2026-10-25-notification-wrapper-design.md);
 project announcements: [docs/specs/2026-10-27-project-announcements-design.md](docs/specs/2026-10-27-project-announcements-design.md);
