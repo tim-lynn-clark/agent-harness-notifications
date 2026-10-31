@@ -1,11 +1,12 @@
 name: gitleaks
 
-# Scans the full commit history for secrets on every push. The pre-commit hook in
+# Scans the full commit history for secrets on every push and pull request. The pre-commit hook in
 # .githooks/ catches them before they are committed; this catches anything that slipped past.
 # The binary is pinned by version and SHA-256 rather than using gitleaks-action, which
 # needs a paid licence on organisation accounts.
 on:
   push:
+  pull_request:
   workflow_dispatch:
 
 permissions:
