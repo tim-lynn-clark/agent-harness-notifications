@@ -1,0 +1,10 @@
+{
+  "name": "cnw",
+  "version": "0.4.3",
+  "private": true,
+  "license": "MIT",
+  "description": "omp extension manifest for cnw; the Claude Code plugin is described in .claude-plugin/.",
+  "omp": {
+    "extensions": ["./omp/cnw.ts"]
+  }
+}
