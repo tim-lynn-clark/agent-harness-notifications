@@ -1,0 +1,109 @@
+name: smoke
+
+# Linux and Windows end-to-end check: build, install the Kokoro engine, and make a
+# notification record a spoken name. Runner images have no sound device, so playback
+# itself is only asserted on Linux, where a null ALSA device stands in for one.
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - run: go test ./...
+      - run: ./scripts/build.sh
+
+      # Keep the run off any state the image ships with, and out of $HOME. Git
+      # Bash's `pwd -W` prints D:/a/… , which both bash and Go on Windows accept;
+      # $GITHUB_WORKSPACE there is backslashed and breaks shell globbing.
+      - name: Point cnw at a scratch config and state directory
+        run: |
+          root=$(pwd -W 2>/dev/null || pwd)
+          echo "ROOT=$root" >> "$GITHUB_ENV"
+          echo "CNW_CONFIG=$root/.smoke/config.toml" >> "$GITHUB_ENV"
+          echo "CNW_STATE_DIR=$root/.smoke/state" >> "$GITHUB_ENV"
+
+      # A null default device lets the real `aplay` argv run without hardware.
+      # Windows has no equivalent, so playback is not asserted there.
+      - name: Install a null audio device
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq alsa-utils
+          printf 'pcm.!default { type null }\nctl.!default { type null }\n' > ~/.asoundrc
+
+      - run: ./bin/cnw init
+
+      - name: List the archive URLs
+        run: ./bin/cnw kokoro urls | tee .smoke/urls.txt
+
+      - name: Cache the Kokoro archives
+        id: archives
+        uses: actions/cache@v6
+        with:
+          path: .smoke/archives
+          key: kokoro-${{ runner.os }}-${{ hashFiles('.smoke/urls.txt') }}
+
+      - name: Download the Kokoro archives
+        if: steps.archives.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p .smoke/archives
+          while read -r url; do
+            curl -fsSL --retry 3 -o ".smoke/archives/${url##*/}" "$url"
+          done < .smoke/urls.txt
+
+      - name: Install Kokoro
+        run: ./bin/cnw kokoro install --from .smoke/archives
+
+      - name: Record a spoken name
+        run: |
+          ./bin/cnw notify done --session smoke --cwd "$ROOT"
+          # `ls` exits non-zero until the detached fire has recorded the name,
+          # which `set -e` would treat as a failure.
+          for _ in {1..90}; do
+            name=$(ls -1 "$CNW_STATE_DIR"/names/*/*.wav 2>/dev/null | head -n 1 || true)
+            [ -n "$name" ] && break
+            sleep 1
+          done
+          if [ -z "$name" ]; then
+            echo "no name was recorded" >&2
+            ./bin/cnw doctor
+            exit 1
+          fi
+          echo "NAME_WAV=$name" >> "$GITHUB_ENV"
+
+      - name: Check the recorded name is audible and levelled
+        run: go run ./scripts/checkwav "$NAME_WAV"
+
+      - name: Check the sound played
+        if: runner.os == 'Linux'
+        run: |
+          # The fire record is written after playback, so "played" means every
+          # file in the sequence reached aplay.
+          grep -q '"event":"fire".*"outcome":"played"' "$CNW_STATE_DIR/events.log" || {
+            echo "the sound did not play:" >&2
+            ./bin/cnw doctor
+            exit 1
+          }
+
+      - run: ./bin/cnw doctor

@@ -1,0 +1,7 @@
+{
+  "name": "cnw",
+  "version": "0.4.3",
+  "description": "Distinct sounds for each kind of Claude Code attention request: questions, approvals, completion, errors.",
+  "author": { "name": "Tim Clark" },
+  "license": "MIT"
+}

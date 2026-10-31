@@ -1,0 +1,19 @@
+#!/bin/sh
+# Launcher: run the cnw binary built for this platform. Exits 0 silently when
+# none matches so a missing build never disturbs Claude Code.
+dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+case "$(uname -s)" in
+  Darwin) os=darwin ;;
+  Linux) os=linux ;;
+  MINGW*|MSYS*|CYGWIN*) os=windows ;;
+  *) exit 0 ;;
+esac
+case "$(uname -m)" in
+  arm64|aarch64) arch=arm64 ;;
+  x86_64|amd64) arch=amd64 ;;
+  *) exit 0 ;;
+esac
+exe="$dir/$os-$arch/cnw"
+[ "$os" = windows ] && exe="$exe.exe"
+[ -x "$exe" ] || exit 0
+exec "$exe" "$@"

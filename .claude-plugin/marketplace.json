@@ -1,0 +1,21 @@
+{
+  "name": "cnw-marketplace",
+  "description": "Marketplace for the cnw attention-sound plugin",
+  "owner": { "name": "Tim Clark" },
+  "plugins": [
+    {
+      "name": "cnw",
+      "source": {
+        "source": "github",
+        "repo": "tim-lynn-clark/agent-harness-notifications",
+        "ref": "release"
+      },
+      "description": "Distinct sounds for each kind of Claude Code attention request: questions, approvals, completion, errors."
+    },
+    {
+      "name": "cnw-dev",
+      "source": "./",
+      "description": "cnw from the marketplace's own checkout; needs scripts/build.sh run in that checkout."
+    }
+  ]
+}
