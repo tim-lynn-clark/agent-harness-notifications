@@ -16,7 +16,7 @@ plugin and an omp extension around one Go binary. User-facing behaviour is in `R
 | `sounds/<voice>/*.wav` | Bundled default clips, one directory per Kokoro voice (`kokoro_voice` picks one), one clip per category |
 | `docs/specs/` | Design specs: the source of truth for behaviour; update them with behaviour changes |
 | `docs/plans/` | Historical implementation plans; they predate the rename and still use the old name, so don't edit them |
-| `.github/workflows/` | `release.yml` publishes a version tag to `release`; `smoke.yml` runs the Linux and Windows end-to-end check on every push; `gitleaks.yml` scans the full history for secrets on every push |
+| `.github/workflows/` | `release.yml` publishes a version tag to `release`; `smoke.yml` runs the Linux and Windows end-to-end check and `gitleaks.yml` scans the full history for secrets, both on every push and pull request |
 | `.githooks/pre-commit` | Runs `gitleaks` on staged changes; enable with `git config core.hooksPath .githooks` |
 | `scripts/checkwav/` | Asserts a recorded clip is audible and levelled; the smoke workflow runs it on a spoken name |
 
@@ -50,6 +50,9 @@ claude plugin validate .
   `.github/workflows/release.yml` then tests, builds, and runs `scripts/publish-release.sh`, which
   refuses a tag that doesn't match both manifests and adds one commit to `release`. Never push to
   `release` by hand.
+- The repository is public (since 2026-10-31). `main` is protected, admins included: changes land
+  through a pull request whose `scan`, `smoke (ubuntu-24.04)` and `smoke (windows-2022)` checks
+  pass. GitHub secret scanning, push protection and private vulnerability reporting are on.
 
 ## Default clips: licence rule
 
@@ -74,13 +77,11 @@ claude plugin validate .
   - Design: `docs/specs/2026-10-29-kokoro-names-design.md`,
     `docs/specs/2026-10-29-voice-selection-design.md`.
 
-## Open questions (as of 2026-10-30)
+## Open questions (as of 2026-10-31)
 
-- **Visibility.** The repository is private; making it public is the owner's call. Standard runners
-  are free on public repositories, so `smoke` and `release` would stop drawing on the plan's
-  included compute.
-- **Platforms.** `.github/workflows/smoke.yml` covers Linux and Windows on every push: build,
-  Kokoro install, a recorded name checked by `scripts/checkwav`, and on Linux playback through a
-  null ALSA device. Confirmed by ear: WSL 2 (Ubuntu 24.04, WSLg, `paplay`), clips plus Kokoro
-  names. Still unproven: audible sound on bare-metal Linux, Linux arm64 and native Windows, the
-  `powershell.exe` WSL interop fallback, and the install on locked-down Windows (AppLocker, WDAC).
+- **Platforms.** `.github/workflows/smoke.yml` covers Linux and Windows on every push and pull
+  request: build, Kokoro install, a recorded name checked by `scripts/checkwav`, and on Linux
+  playback through a null ALSA device. Confirmed by ear: WSL 2 (Ubuntu 24.04, WSLg, `paplay`),
+  clips plus Kokoro names. Still unproven: audible sound on bare-metal Linux, Linux arm64 and
+  native Windows, the `powershell.exe` WSL interop fallback, and the install on locked-down
+  Windows (AppLocker, WDAC).

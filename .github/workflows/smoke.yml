@@ -5,6 +5,7 @@ name: smoke
 # itself is only asserted on Linux, where a null ALSA device stands in for one.
 on:
   push:
+  pull_request:
   workflow_dispatch:
 
 permissions:
