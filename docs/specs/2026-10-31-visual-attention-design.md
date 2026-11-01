@@ -36,19 +36,24 @@ to miss and stays until the request is dealt with.
 
 ### 4.1 Record
 
-`state.Session` gains `Attention *Attention`:
+`state.Session` gains `Attention *Attention` and `AttentionClearedMS int64`:
 
 ```go
 type Attention struct {
-	Category string `json:"category"` // category.ID
-	SinceMS  int64  `json:"since_ms"` // ladder clock (§5.2)
-	Label    string `json:"label"`    // spoken project/worktree name, as announced
-	Cwd      string `json:"cwd"`
-	Jump     Jump   `json:"jump"`     // §6.1
-	ToolName string `json:"tool_name,omitempty"` // from the originating pending prompt, for CancelMatchingTool
-	AgentID  string `json:"agent_id,omitempty"`  // likewise
+	SessionID string      `json:"session_id"`
+	Category  string      `json:"category"` // category.ID
+	SinceMS   int64       `json:"since_ms"` // when the triggering event was handled; ladder clock (§5.2)
+	Label     string      `json:"label"`    // project/worktree name, as announced
+	Cwd       string      `json:"cwd"`
+	Jump      jump.Target `json:"jump"`     // §6.1
+	ToolName  string      `json:"tool_name,omitempty"` // from the originating pending prompt, for CancelMatchingTool
+	AgentID   string      `json:"agent_id,omitempty"`  // likewise
 }
 ```
+
+`AttentionClearedMS` records the last `CancelAll` or `Resolve`. The player sets attention after its
+delay, so without it a "done" scheduled just before the user typed would reappear after the prompt
+had already cleared it: `Claim` skips setting attention when `AttentionClearedMS > SinceMS`.
 
 ### 4.2 Set
 
@@ -69,7 +74,7 @@ Attention is cleared by exactly the events that clear `Pending` today:
 | `CancelAll` (UserPromptSubmit, PermissionDenied, ElicitationResult, SessionEnd) | always |
 | Stop / StopFailure | the prior attention, before their own Done/Error attention is set by its claim |
 | `CancelMatchingTool` (PostToolUse, PostToolUseFailure) | only when tool name and agent id match the attention's originating pending prompt |
-| omp `cnw resolve`, `cnw turn-end` | always |
+| omp `cnw resolve` (sent on tool approval or plan review resolved, the `ask` tool finishing, an aborted turn, and every user `input`), `cnw turn-end` | always |
 
 Done, error and usage limit have no pending prompt, so their attention is cleared only by the next
 UserPromptSubmit or SessionEnd (or omp's equivalents).
@@ -80,19 +85,22 @@ the snapshot.
 
 ### 4.4 Staleness
 
-A session that dies without SessionEnd would otherwise wait forever. The snapshot (§4.5) omits
-attentions older than `visual.stale_after_h` (default 6). The session file is left alone.
+A session that dies without SessionEnd would otherwise wait forever. Attentions older than
+`visual.stale_after_h` (default 6) are dropped: the snapshot (§4.5) omits them when written, and
+the renderer drops them using `stale_after_ms` as time passes. The session file is left alone.
 
 ### 4.5 Snapshot
 
 Every `state.Update` that changes any session's `Attention` rewrites `<state dir>/visual.json`
-atomically (write temp file, rename) under a state-directory lock:
+atomically (write temp file, rename). Reading the session files and writing the snapshot happen
+together under `<state dir>/visual.lock`, so the last writer always reflects the latest sessions:
 
 ```json
 {
   "version": 1,
-  "generation": 42,
-  "now_ms": 1793450000000,
+  "halo_after_ms": 60000,
+  "critter_after_ms": 240000,
+  "stale_after_ms": 21600000,
   "waiting": [
     {"session_id": "…", "category": "permission", "since_ms": 1793449940000,
      "label": "notifier, specification", "color": "#F5A524", "max_rung": 3}
@@ -101,20 +109,20 @@ atomically (write temp file, rename) under a state-directory lock:
 ```
 
 - `waiting` is sorted oldest first.
-- `color` and `max_rung` are resolved from config when the snapshot is written, so the renderer
-  never reads TOML.
+- Colours, highest rungs and thresholds are resolved from config when the snapshot is written, so
+  the renderer never reads TOML.
 - The snapshot carries no ladder state; the renderer derives rungs from `since_ms` and its clock.
-- `generation` increments on every write; the renderer reconciles only when it changes.
 
 ## 5. Renderer: macOS visual host
 
 ### 5.1 Process
 
 - `cnw visual host` writes the embedded (`go:embed`) JXA script to
-  `<state dir>/visual-host-<version>.js` and `exec`s `osascript -l JavaScript` on it.
+  `<state dir>/visual-host-<content hash>.js` and `exec`s `osascript -l JavaScript` on it.
 - The script runs `NSApplication` with the Accessory activation policy: no Dock icon, never takes
   focus.
-- Every 250 ms it checks the mtime of `visual.json` and reconciles the screen with it.
+- Every 250 ms it reads `visual.json` and `visual-preview.json`, rebuilds the overlay windows if the
+  set of screen frames has changed, and reconciles the screen with the waiting sessions.
 - Every 5 s it touches `<state dir>/visual-host.alive` as a heartbeat.
 - On exit it removes all of its windows; overlays never outlive the host.
 
@@ -125,9 +133,9 @@ time has passed, capped at the session's `max_rung`:
 
 | Rung | Starts at | Look |
 |---|---|---|
-| 1 Aurora | `since_ms` | An inner glow about 28 px deep along every edge of every display, breathing in opacity over a 2.4 s cycle (a Core Animation animation, run by the render server). With several waiting sessions the edge is split into bands, one colour per session, oldest at the top. |
+| 1 Aurora | `since_ms` | An inner glow about 28 px deep along every edge of every display, breathing in opacity over a 2.4 s cycle (a Core Animation animation, run by the render server). With N waiting sessions, each edge is divided along its length into N equal segments; segment *i* takes the colour of the *i*-th oldest session. |
 | 2 Halo | `+ halo_after_s` (60) | A ring around the pointer, with a label beside it: `<label> · <category>`, plus ` +N` when N other sessions are also waiting. Shown only on the pointer's display. A 60 Hz `NSTimer` updates the position and skips frames while the pointer is still. The label names the oldest waiting session. |
-| 3 Critter | `+ critter_after_s` (240) | A vector creature built from `CAShapeLayer` parts walks in from the bottom edge of the pointer's display with a squash-and-stretch walk cycle, stops, and holds up a sign showing the label and a category glyph; it blinks now and then. On clear it waves and walks off. One critter at a time, for the oldest session at rung 3. |
+| 3 Critter | `+ critter_after_s` (240) | A vector creature built from rounded `CALayer` shapes (body, eyes, feet, sign) walks in from the bottom edge of the pointer's display with a squash-and-stretch walk cycle, stops, and holds up a sign showing the label and a category glyph; it blinks now and then. On clear it waves and walks off. One critter at a time, for the oldest session at rung 3. |
 
 When an attention is cleared, its rungs fade out (aurora band, halo) or exit (critter) within one
 poll interval plus about 300 ms of animation.
@@ -154,7 +162,7 @@ Default colours:
   window level `NSStatusWindowLevel`.
 - `collectionBehavior`: all Spaces, full-screen auxiliary, stationary.
 - `sharingType = NSWindowSharingNone`, so the overlays never appear in screen shares or recordings.
-- The windows are rebuilt on `NSApplicationDidChangeScreenParametersNotification`.
+- The windows are rebuilt whenever the poll (§5.1) sees a different set of screen frames.
 
 ### 5.4 Reduce Motion
 
@@ -173,13 +181,14 @@ record a `Jump` that becomes part of the attention:
 
 | Host | Detected by | Stored | Jump action |
 |---|---|---|---|
-| Orca | `ORCA_WORKTREE_ID`, `ORCA_PANE_KEY` | both ids | `orca terminal list --worktree id:<ORCA_WORKTREE_ID> --json`, match the pane, `orca terminal switch --terminal <handle>`; if the pane can't be matched, activate Orca |
+| Orca | `TERM_PROGRAM=Orca`; `ORCA_TERMINAL_HANDLE`, `ORCA_WORKTREE_ID`, `ORCA_PANE_KEY` | all three | `orca terminal switch --terminal <handle>`. If that fails (handles are runtime-issued and change when Orca restarts), `orca terminal list --worktree id:<worktree> --json` and pick the terminal whose `tabId:leafId` equals the pane key, then switch to its handle. Otherwise activate Orca. |
 | iTerm2 | `TERM_PROGRAM=iTerm.app`, `ITERM_SESSION_ID` | session unique id | AppleScript: select the session with that id, activate iTerm2 |
 | Terminal.app | `TERM_PROGRAM=Apple_Terminal` | controlling tty, found by walking parent pids with `ps -o tty=` | AppleScript: select the tab whose `tty` matches, bring its window to the front, activate Terminal |
 | VS Code, Cursor | `TERM_PROGRAM=vscode` and `__CFBundleIdentifier` | bundle id, cwd | `open -b <bundle id> <cwd>` |
 | Other | `__CFBundleIdentifier` | bundle id | activate the app with `open -b <bundle id>` |
 
-Orca is checked first, because Orca terminals also set `TERM_PROGRAM`.
+Orca is checked first; its env vars identify it even if `TERM_PROGRAM` was overwritten by a nested
+shell.
 
 ### 6.2 Dispatch
 
@@ -235,8 +244,9 @@ Validation, consistent with the existing keys:
 - *Quit visuals* exits with status 0, so launchd doesn't restart the host until the next login or
   `cnw visual install`. A crash exits non-zero and is restarted.
 - **Upgrade healing:** each `cnw hook` and `cnw notify` compares its own executable path with
-  `visual.installed`. If the file exists and the paths differ, it rewrites the plist and runs
-  `launchctl kickstart -k gui/<uid>/<label>`. If the file is absent, there's nothing to compare.
+  `visual.installed`. If the file exists and the paths differ, it rewrites the plist and reloads it
+  with `launchctl bootout` then `launchctl bootstrap` (`kickstart` would keep launchd's cached copy
+  of the old plist). If the file is absent, there's nothing to compare.
 - **Slash commands:** a `/cnw:visual` skill (`skills/visual/SKILL.md`) and the matching omp
   registration in `omp/cnw.ts` expose `install`, `uninstall` and `preview`.
 
@@ -287,12 +297,12 @@ A throwaway spike answers these questions; nothing from it is kept:
    JavaScript`?
 2. Does a 60 Hz pointer-following layer stay under about 3 % CPU on Apple silicon?
 3. Does `sharingType = NSWindowSharingNone` hide the overlay from screen capture on macOS 15+?
-4. Does `orca terminal list --json` expose the `ORCA_PANE_KEY` value, or anything else that can be
-   matched to it?
+4. ~~Does `orca terminal list --json` expose the pane key?~~ Answered while writing the plan: Orca
+   exports `ORCA_TERMINAL_HANDLE` directly, and `terminal list --json` returns `tabId` and `leafId`,
+   whose `tabId:leafId` equals `ORCA_PANE_KEY` (§6.1).
 
 If 1 or 2 fails, the renderer is replaced by a downloaded, signed native helper that consumes the
-same snapshot (§4.5). That needs a new design decision before implementation continues. If 4 fails,
-Orca jumps fall back as §6.1 describes.
+same snapshot (§4.5). That needs a new design decision before implementation continues.
 
 ## 12. Documentation
 
