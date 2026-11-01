@@ -31,9 +31,14 @@ func Apply(st state.Store, e event.Event, now time.Time) (res classify.Result, s
 		switch res.Cancel {
 		case classify.CancelAll:
 			s.Pending = nil
+			s.Attention = nil
+			s.AttentionClearedMS = now.UnixMilli()
 		case classify.CancelMatchingTool:
 			if s.Pending != nil && s.Pending.ToolName == e.ToolName && s.Pending.AgentID == e.AgentID {
 				s.Pending = nil
+			}
+			if a := s.Attention; a != nil && a.ToolName != "" && a.ToolName == e.ToolName && a.AgentID == e.AgentID {
+				s.Attention = nil
 			}
 		}
 
@@ -76,9 +81,13 @@ func Register(st state.Store, sessionID string, c category.ID, now time.Time) (i
 }
 
 // Resolve clears sessionID's pending prompt, so a sound scheduled for it stays
-// silent.
-func Resolve(st state.Store, sessionID string) error {
-	_, err := st.Update(sessionID, func(s *state.Session) { s.Pending = nil })
+// silent, and its attention, because the user has acted.
+func Resolve(st state.Store, sessionID string, now time.Time) error {
+	_, err := st.Update(sessionID, func(s *state.Session) {
+		s.Pending = nil
+		s.Attention = nil
+		s.AttentionClearedMS = now.UnixMilli()
+	})
 	return err
 }
 
@@ -91,8 +100,10 @@ const (
 
 // Claim is called by the detached player after its delay. For seq > 0 it
 // plays only if that registered prompt is still current, and consumes it. Every
-// sound respects the per-session cooldown. On OutcomePlay the play time is recorded.
-func Claim(st state.Store, sessionID string, seq int64, now time.Time, cooldown time.Duration) (string, error) {
+// sound respects the per-session cooldown. On OutcomePlay the play time is
+// recorded. On OutcomePlay and OutcomeCooldown the session is marked as
+// waiting on the user with att (visual attention spec §4.2).
+func Claim(st state.Store, sessionID string, seq int64, now time.Time, cooldown time.Duration, att state.Attention) (string, error) {
 	outcome := OutcomePlay
 	_, err := st.Update(sessionID, func(s *state.Session) {
 		if seq > 0 {
@@ -100,8 +111,10 @@ func Claim(st state.Store, sessionID string, seq int64, now time.Time, cooldown 
 				outcome = OutcomeCancelled
 				return
 			}
+			att.ToolName, att.AgentID = s.Pending.ToolName, s.Pending.AgentID
 			s.Pending = nil
 		}
+		markAttention(s, sessionID, att)
 		if s.LastPlayedMS != 0 && now.Sub(fromMS(s.LastPlayedMS)) < cooldown {
 			outcome = OutcomeCooldown
 			return
@@ -109,6 +122,19 @@ func Claim(st state.Store, sessionID string, seq int64, now time.Time, cooldown 
 		s.LastPlayedMS = now.UnixMilli()
 	})
 	return outcome, err
+}
+
+// markAttention records att unless the user acted after the triggering event,
+// and lets an idle reminder keep an existing attention so its ladder goes on.
+func markAttention(s *state.Session, sessionID string, att state.Attention) {
+	if att.Category == "" || s.AttentionClearedMS > att.SinceMS {
+		return
+	}
+	if att.Category == string(category.IdleReminder) && s.Attention != nil {
+		return
+	}
+	att.SessionID = sessionID
+	s.Attention = &att
 }
 
 func fromMS(ms int64) time.Time {

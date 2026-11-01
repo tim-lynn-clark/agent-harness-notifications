@@ -85,7 +85,7 @@ func runResolve(args []string) int {
 	rec := newRecord(time.Now())
 	rec.Event, rec.SessionID, rec.Result = "resolve", *session, "cancel"
 	defer func() { _ = st.Log(rec) }()
-	if err := app.Resolve(st, *session); err != nil {
+	if err := app.Resolve(st, *session, time.Now()); err != nil {
 		rec.Outcome = "state: " + err.Error()
 		return 1
 	}
@@ -129,7 +129,7 @@ func runTurnEnd(args []string, stdin io.Reader) int {
 		id = category.DoneQuestion
 	}
 	rec.Result = string(id)
-	if err := app.Resolve(st, *session); err != nil {
+	if err := app.Resolve(st, *session, now); err != nil {
 		rec.Outcome = "state: " + err.Error()
 		return 1
 	}

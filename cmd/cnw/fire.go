@@ -91,7 +91,7 @@ func runFire(args []string) {
 	}
 	defer release()
 
-	outcome, err := app.Claim(st, *session, *seq, time.Now(), cfg.Cooldown)
+	outcome, err := app.Claim(st, *session, *seq, time.Now(), cfg.Cooldown, state.Attention{})
 	if err != nil {
 		rec.Outcome = "state: " + err.Error()
 		return
