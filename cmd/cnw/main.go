@@ -20,6 +20,8 @@ const usage = `usage:
                            list the bundled voices, or hear one; kokoro_voice picks one
   cnw kokoro install [--from DIR] | remove
                            opt in to spoken names in the kokoro_voice voice (downloads ~376 MB)
+  cnw visual install | uninstall | preview [CATEGORY]
+                           on-screen signal and menu bar orb for waiting sessions (macOS)
   cnw doctor               check setup and show recent events
 `
 
@@ -48,6 +50,8 @@ func main() {
 		os.Exit(runVoices(os.Args[2:]))
 	case "kokoro":
 		os.Exit(runKokoro(os.Args[2:]))
+	case "visual":
+		os.Exit(runVisual(os.Args[2:]))
 	case "doctor":
 		os.Exit(runDoctor())
 	default:
