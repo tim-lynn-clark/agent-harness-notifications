@@ -221,7 +221,7 @@ func TestLoadReadsWithoutCreating(t *testing.T) {
 	if s, err := st.Load("missing"); err != nil || s.Attention != nil {
 		t.Fatalf("missing: %+v %v", s, err)
 	}
-	if got, _ := st.Attentions(); len(got) != 0 {
+	if _, err := os.Stat(filepath.Join(st.Dir, "sessions")); !os.IsNotExist(err) {
 		t.Fatal("Load must not create a session")
 	}
 }

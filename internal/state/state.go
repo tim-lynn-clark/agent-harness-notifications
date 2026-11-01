@@ -12,7 +12,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gofrs/flock"
@@ -148,15 +150,39 @@ func WriteFileAtomic(path string, data []byte) error {
 		os.Remove(tmp.Name())
 		return err
 	}
-	if err := os.Rename(tmp.Name(), path); err != nil {
+	if err := renameRetry(tmp.Name(), path); err != nil {
 		os.Remove(tmp.Name())
 		return err
 	}
 	return nil
 }
 
+// renameRetry is os.Rename, except on Windows, where replacing a file another
+// process has open fails with ERROR_ACCESS_DENIED or ERROR_SHARING_VIOLATION
+// until that process closes it; there it retries for about half a second, as
+// Go's cmd/internal/robustio does.
+func renameRetry(from, to string) error {
+	err := os.Rename(from, to)
+	if runtime.GOOS != "windows" {
+		return err
+	}
+	for i := 0; i < 50 && isTransientRenameErr(err); i++ {
+		time.Sleep(10 * time.Millisecond)
+		err = os.Rename(from, to)
+	}
+	return err
+}
+
+// isTransientRenameErr reports ERROR_ACCESS_DENIED (5) and
+// ERROR_SHARING_VIOLATION (32), by number so this builds on every OS.
+func isTransientRenameErr(err error) bool {
+	var errno syscall.Errno
+	return errors.As(err, &errno) && (errno == 5 || errno == 32)
+}
+
 // Load returns a session's state without locking or creating it. Session
-// files are replaced atomically, so an unlocked read is never partial.
+// files are replaced by rename (retried on Windows while a reader holds the
+// file open), so an unlocked read is never partial.
 func (s Store) Load(sessionID string) (Session, error) {
 	var sess Session
 	data, err := os.ReadFile(s.sessionPath(sessionID))
