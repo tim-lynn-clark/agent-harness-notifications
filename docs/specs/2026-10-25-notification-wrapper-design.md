@@ -222,6 +222,7 @@ agent-harness-notifications/
 ├── .claude-plugin/plugin.json
 ├── .claude-plugin/marketplace.json  # "cnw-marketplace": cnw (github, ref release), cnw-dev ("./")
 ├── hooks/hooks.json
+├── skills/doctor/SKILL.md        # /cnw:doctor in Claude Code (§8.5)
 ├── sounds/<voice>/<category>.wav # bundled default clips, one directory per Kokoro voice
 └── bin/
     ├── cnw                       # POSIX sh launcher: selects the platform binary
@@ -296,6 +297,22 @@ shell would read a different directory than the hooks write.
 - `events.log` — JSON Lines: timestamp, `hook_event_name`, `session_id`, `cwd`, category or
   `ignored`/`cancel`, play outcome, and `ORCA_WORKTREE_ID` / `ORCA_PANE_KEY` when present. Rotated at
   1 MiB, keeping one previous file. Message text is not logged.
+
+### 8.5 `/cnw:doctor`
+
+The plugin never puts `cnw` on `PATH`, so `cnw doctor` needs the launcher's full path. Both
+agents get the same slash command instead:
+
+- **Claude Code:** `skills/doctor/SKILL.md`, named `/cnw:doctor` from the plugin name. Its body
+  injects `` !`${CLAUDE_PLUGIN_ROOT}/bin/cnw doctor || true` `` and `allowed-tools` grants that exact
+  command, so it runs without a permission prompt. It must be a skill: Claude Code substitutes
+  `${CLAUDE_PLUGIN_ROOT}` only in plugin skills. `|| true` is required: when the injected command
+  exits non-zero (doctor exits 1 on any FAIL), Claude Code drops the whole skill and prints nothing.
+  `disable-model-invocation: true` keeps Claude from running it unasked.
+- **omp:** `omp/cnw.ts` registers `cnw:doctor` with `pi.registerCommand`, runs the binary in the
+  session's cwd, and posts stdout and stderr as a displayed `cnw.doctor` custom message; no model
+  turn runs. omp's Markdown commands neither run `` !`…` `` nor expand `${CLAUDE_PLUGIN_ROOT}`, so
+  the skill can't serve omp.
 
 ## 9. Audio backends
 
@@ -389,6 +406,9 @@ Code) and cancels it with `resolve`. Events from subagents (`ctx.agent.kind === 
 
 Session ids come from `ctx.sessionManager.getSessionId()`. Verified live on omp 18.12.6: open
 question, open approval, quick answer, quick deny, closing question, idle reminder, and interrupt.
+
+The extension also registers `/cnw:doctor` (§8.5) whether or not a binary exists; without one it
+reports the missing platform instead of a report.
 
 ## Appendix A. Recorded payloads (Claude Code 2.1.301, trimmed)
 
