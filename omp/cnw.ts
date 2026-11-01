@@ -20,6 +20,7 @@ const USER_COMMANDS = [
   { name: "init", description: "Write the default cnw config file if none exists" },
   { name: "voices", description: "List the bundled voices, or hear one: /cnw:voices [play ID [CATEGORY]]" },
   { name: "kokoro", description: "Spoken names in the clips' voice: /cnw:kokoro install [--from DIR] | urls | remove" },
+  { name: "visual", description: "On-screen signal and menu bar orb for waiting sessions (macOS): /cnw:visual install | uninstall | preview [CATEGORY]" },
 ];
 
 type TimerHandle = unknown;
@@ -173,7 +174,11 @@ export default function cnwExtension(pi: ExtensionAPI): void {
   on("plan_review_requested", (_e, ctx) => prompt("plan_approval", ctx));
   on("plan_review_resolved", (_e, ctx) => resolve(ctx));
 
-  for (const event of ["input", "agent_start", "session_shutdown"]) on(event, () => clearIdle());
+  for (const event of ["agent_start", "session_shutdown"]) on(event, () => clearIdle());
+  on("input", (_e, ctx) => {
+    clearIdle();
+    resolve(ctx);
+  });
 
   on("agent_end", (e, ctx) => {
     if (field(e, "willContinue") === true) return; // more work is already scheduled

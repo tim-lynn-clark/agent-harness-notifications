@@ -1,6 +1,6 @@
 # Visual attention (macOS) — Design
 
-Status: approved design, not implemented · Date: 2026-10-31 · Extends: [notification wrapper design](2026-10-25-notification-wrapper-design.md)
+Status: implemented · Date: 2026-10-31 · Extends: [notification wrapper design](2026-10-25-notification-wrapper-design.md)
 
 ## 1. Problem
 
@@ -112,6 +112,9 @@ together under `<state dir>/visual.lock`, so the last writer always reflects the
 - Colours, highest rungs and thresholds are resolved from config when the snapshot is written, so
   the renderer never reads TOML.
 - The snapshot carries no ladder state; the renderer derives rungs from `since_ms` and its clock.
+- If the config can't be loaded (a parse or range error), the snapshot is still rewritten, using the
+  built-in colours, rungs and thresholds (`config.Default()`). The waiting list therefore always
+  matches session state.
 
 ## 5. Renderer: macOS visual host
 
@@ -134,11 +137,11 @@ time has passed, capped at the session's `max_rung`:
 | Rung | Starts at | Look |
 |---|---|---|
 | 1 Aurora | `since_ms` | An inner glow about 28 px deep along every edge of every display, breathing in opacity over a 2.4 s cycle (a Core Animation animation, run by the render server). With N waiting sessions, each edge is divided along its length into N equal segments; segment *i* takes the colour of the *i*-th oldest session. |
-| 2 Halo | `+ halo_after_s` (60) | A ring around the pointer, with a label beside it: `<label> · <category>`, plus ` +N` when N other sessions are also waiting. Shown only on the pointer's display. A 60 Hz `NSTimer` updates the position and skips frames while the pointer is still. The label names the oldest waiting session. |
-| 3 Critter | `+ critter_after_s` (240) | A vector creature built from rounded `CALayer` shapes (body, eyes, feet, sign) walks in from the bottom edge of the pointer's display with a squash-and-stretch walk cycle, stops, and holds up a sign showing the label and a category glyph; it blinks now and then. On clear it waves and walks off. One critter at a time, for the oldest session at rung 3. |
+| 2 Halo | `+ halo_after_s` (60) | A ring around the pointer, with a label beside it: `<label> · <category>`, plus ` +N` when N other sessions are also waiting. Shown only on the pointer's display. A 60 Hz `NSTimer` updates the position, and runs only while the pointer moves: it stops after 0.5 s of stillness, and the 250 ms poll restarts it when the pointer moves again, so the halo can lag by up to about 250 ms when movement starts. Each frame moves only the halo's container layer. The label names the oldest waiting session. |
+| 3 Critter | `+ critter_after_s` (240) | A vector creature built from rounded `CALayer` shapes (body, eyes, feet, sign) walks in from the bottom edge of the pointer's display with a squash-and-stretch walk cycle, stops, and holds up a sign showing the label and a category glyph; it blinks now and then. On clear it waves and walks off, about 3.8 s in total (a 350 ms fade with Reduce Motion). One critter at a time, for the oldest session at rung 3; the next critter enters only after the previous one has left. |
 
-When an attention is cleared, its rungs fade out (aurora band, halo) or exit (critter) within one
-poll interval plus about 300 ms of animation.
+When an attention is cleared, its aurora band and halo fade within one poll interval plus about
+300 ms of animation. Its critter waves and walks off (about 3.8 s) as described above.
 
 Default `max_rung`: 3 for permission, plan_approval, question, mcp_input and done_question; 2 for
 done, done_background, error, usage_limit and idle_reminder.
@@ -243,10 +246,15 @@ Validation, consistent with the existing keys:
 
 - *Quit visuals* exits with status 0, so launchd doesn't restart the host until the next login or
   `cnw visual install`. A crash exits non-zero and is restarted.
-- **Upgrade healing:** each `cnw hook` and `cnw notify` compares its own executable path with
-  `visual.installed`. If the file exists and the paths differ, it rewrites the plist and reloads it
-  with `launchctl bootout` then `launchctl bootstrap` (`kickstart` would keep launchd's cached copy
-  of the old plist). If the file is absent, there's nothing to compare.
+- **Upgrade healing:** after each `cnw hook` and `cnw notify` has handled and logged its event
+  (deferred), it reads `visual.installed`. It re-points the LaunchAgent only when the recorded
+  binary no longer exists, or its modification time is older than the running binary's. Several
+  installs (for example the Claude Code and omp plugin copies, which share one state dir) therefore
+  settle on the newest instead of fighting. Concurrent heals are serialised by
+  `<state dir>/visual-install.lock` (TryLock; a busy lock skips the heal), and the rule is
+  re-checked after the lock is taken. A heal rewrites the plist and reloads it with
+  `launchctl bootout` then `launchctl bootstrap` (`kickstart` would keep launchd's cached copy of
+  the old plist). If `visual.installed` is absent, there's nothing to heal.
 - **Slash commands:** a `/cnw:visual` skill (`skills/visual/SKILL.md`) and the matching omp
   registration in `omp/cnw.ts` expose `install`, `uninstall` and `preview`.
 
@@ -254,7 +262,8 @@ Validation, consistent with the existing keys:
 
 `cnw doctor` adds these lines, only on macOS:
 
-- **FAIL:** the plist exists but points at a binary path other than the current one.
+- **FAIL:** the LaunchAgent's recorded binary no longer exists.
+- **INFO:** the LaunchAgent runs another existing cnw install.
 - **FAIL:** visuals are installed, but the heartbeat is older than 15 s (the host isn't running).
 - **FAIL:** `osascript` is missing.
 - **INFO:** visuals not installed (`cnw visual install` to enable).
@@ -276,7 +285,9 @@ Go unit tests:
 - Config validation for every `[visual]` key and the per-category keys.
 - Jump detection from environment and process ancestry, for every row of §6.1, using an injected
   environment and command runner.
-- Upgrade healing rewrites only when the path differs.
+- Upgrade healing re-points the LaunchAgent only when the recorded binary is missing or older than
+  the running one: it leaves a newer recorded binary alone, and skips the heal while
+  `visual-install.lock` is held.
 
 CI: a `macos-15` job in `.github/workflows/smoke.yml`:
 
@@ -303,6 +314,17 @@ A throwaway spike answers these questions; nothing from it is kept:
 
 If 1 or 2 fails, the renderer is replaced by a downloaded, signed native helper that consumes the
 same snapshot (§4.5). That needs a new design decision before implementation continues.
+
+Outcome:
+
+- Q1–Q3 passed.
+- JXA corrections: attributed strings are built with `NSMutableAttributedString.alloc.init` plus
+  `replaceCharactersInRangeWithString`/`addAttributesRange`, because the `initWith*` methods aren't
+  bridged. Layer colours come from `CGColorCreateSRGB`, because reading `NSColor.CGColor` crashes
+  osascript.
+- The spike's 0.2 % CPU figure didn't reproduce with the full halo (3.9 % still, 8–10 % moving),
+  which led to the idle-timer design (§5.2). Measured afterwards: about 1 % with the pointer still
+  (the glow baseline) and about 5.6 % while it moves.
 
 ## 12. Documentation
 

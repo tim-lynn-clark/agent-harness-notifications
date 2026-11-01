@@ -239,6 +239,38 @@ cnw kokoro remove
   espeak-ng (GPL-3.0), which pronounces words missing from the dictionary. All of it is downloaded
   from the sherpa-onnx releases to your machine; none of it ships with `cnw`.
 
+## Visual signal (macOS)
+
+Opt-in. While a session waits on you, `cnw` also shows it on screen. The signal escalates the
+longer you leave it, and clears by itself when you answer or type your next prompt:
+
+| After | You see |
+|---|---|
+| 0 s | A soft glow around the edge of every display, in the category's colour. With several sessions waiting, each edge is split into one colour per session. |
+| 60 s | A ring around the pointer with the project and what it needs (`notifier · permission`). |
+| 4 min | A small critter walks in from the screen edge holding a sign with the project name. |
+
+Done, error and usage limit stop at the ring. A menu bar dot shows how many sessions are waiting;
+its menu lists them, and clicking one brings its terminal to the front (Orca terminal, iTerm2 or
+Terminal.app tab, VS Code or Cursor window, or else the app). The overlays ignore clicks and don't
+appear in screen shares or recordings. With Reduce Motion on, nothing pulses or walks.
+
+```bash
+cnw visual install            # start it now and at every login (a LaunchAgent)
+cnw visual preview [CATEGORY] # run the whole escalation in 12 s
+cnw visual uninstall
+```
+
+In a session, `/cnw:visual install` (or `uninstall`, `preview`) does the same.
+
+The first jump into Terminal or iTerm2 makes macOS ask whether `osascript` may control it. Timings,
+colours and how far each category escalates are in [Configure](#configure).
+
+One visual host serves every install. If both the Claude Code plugin and the omp extension are
+installed, they share it: after an update, the next sound event moves the LaunchAgent to the newest
+`cnw` binary. `cnw doctor` reports whether the host is running, and says so when the LaunchAgent
+runs another install's binary or one that no longer exists.
+
 ## Configure
 
 Optional: without a config file every category plays its default clip. To customise:
@@ -264,6 +296,12 @@ extra wait after the trigger), `volume` (0.0–1.0). Unset keys inherit the defa
 top-level `volume`. A relative `sound` path is resolved against the config file's directory. On
 Windows, write `sound` paths as single-quoted TOML literal strings (`'C:\Users\me\ding.wav'`) or
 with forward slashes: `\U` inside a double-quoted string is a TOML escape.
+
+Visual signal keys (see [Visual signal (macOS)](#visual-signal-macos)):
+
+- `[visual]`: `halo_after_s` (default 60), `critter_after_s` (default 240, must be greater than
+  `halo_after_s`), `stale_after_h` (default 6: ignore sessions waiting longer, e.g. after a crash).
+- Per category: `color` (`"#RRGGBB"`) and `max_rung` (1 glow, 2 ring, 3 critter).
 
 ```toml
 volume = 0.8

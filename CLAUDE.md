@@ -8,10 +8,10 @@ plugin and an omp extension around one Go binary. User-facing behaviour is in `R
 
 | Path | What |
 |---|---|
-| `cmd/cnw/` | CLI entry points: `hook`, `notify`, `resolve`, `turn-end`, `play`, `init`, `voices`, `kokoro`, `doctor` (usage in `main.go`) |
-| `internal/` | `event` (hook payload), `classify` (event → category, no I/O), `category` (categories and defaults), `app` (applies events to state; `Claim` decides whether a scheduled sound plays), `state` (session state, event log), `config` (TOML), `audio` (players), `label` + `announce` (spoken project names, chimes), `kokoro` (opt-in Kokoro engine install, name synthesis, loudness levelling), `wav` (16-bit mono WAV) |
+| `cmd/cnw/` | CLI entry points: `hook`, `notify`, `resolve`, `turn-end`, `play`, `init`, `voices`, `kokoro`, `visual`, `doctor` (usage in `main.go`) |
+| `internal/` | `event` (hook payload), `classify` (event → category, no I/O), `category` (categories and defaults), `app` (applies events to state; `Claim` decides whether a scheduled sound plays), `state` (session state, event log), `config` (TOML), `audio` (players), `label` + `announce` (spoken project names, chimes), `kokoro` (opt-in Kokoro engine install, name synthesis, loudness levelling), `wav` (16-bit mono WAV), `jump` (finds and focuses a session's terminal), `visual` (snapshot, embedded JXA host `host.js`, LaunchAgent) |
 | `hooks/hooks.json` | Claude Code hooks; every handler runs `bin/cnw hook` async |
-| `skills/<command>/SKILL.md` | `/cnw:doctor`, `play`, `init`, `voices`, `kokoro` in Claude Code; omp's are registered in `omp/cnw.ts` (spec §8.5) |
+| `skills/<command>/SKILL.md` | `/cnw:doctor`, `play`, `init`, `voices`, `kokoro`, `visual` in Claude Code; omp's are registered in `omp/cnw.ts` (spec §8.5) |
 | `omp/cnw.ts` | omp extension; drives `cnw notify/resolve/turn-end` and registers the `/cnw:*` commands (declared in `package.json`) |
 | `bin/cnw` | POSIX sh launcher that picks `bin/<os>-<arch>/cnw` |
 | `sounds/<voice>/*.wav` | Bundled default clips, one directory per Kokoro voice (`kokoro_voice` picks one), one clip per category |
@@ -85,4 +85,5 @@ claude plugin validate .
   playback through a null ALSA device. Confirmed by ear: WSL 2 (Ubuntu 24.04, WSLg, `paplay`),
   clips plus Kokoro names. Still unproven: audible sound on bare-metal Linux, Linux arm64 and
   native Windows, the `powershell.exe` WSL interop fallback, and the install on locked-down
-  Windows (AppLocker, WDAC).
+  Windows (AppLocker, WDAC). The visual signal is macOS only; `visual-macos` in `smoke.yml` runs
+  the host headlessly but nobody has checked by eye whether it renders on CI.
