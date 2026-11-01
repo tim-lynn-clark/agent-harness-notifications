@@ -105,10 +105,11 @@ func InstalledPath(stateDir string) (string, bool) {
 }
 
 // Heal re-points an installed LaunchAgent at exe after a plugin upgrade moved
-// the binary (spec §8). Concurrent hooks don't both reinstall.
+// the binary (spec §8): only when the recorded binary is gone or older than
+// exe, so coexisting installs (Claude Code and omp) settle on the newest
+// instead of taking turns. Concurrent hooks don't both reinstall.
 func Heal(home, stateDir, exe string, run func(string, ...string) ([]byte, error)) (bool, error) {
-	p, ok := InstalledPath(stateDir)
-	if !ok || p == exe {
+	if !healable(stateDir, exe) {
 		return false, nil
 	}
 	lock := flock.New(filepath.Join(stateDir, "visual-install.lock"))
@@ -117,5 +118,23 @@ func Heal(home, stateDir, exe string, run func(string, ...string) ([]byte, error
 		return false, err
 	}
 	defer lock.Unlock()
+	if !healable(stateDir, exe) { // another hook may have healed meanwhile
+		return false, nil
+	}
 	return true, Install(home, stateDir, exe, run)
+}
+
+// healable reports whether the installed agent runs a binary other than exe
+// that is missing or older than exe.
+func healable(stateDir, exe string) bool {
+	p, ok := InstalledPath(stateDir)
+	if !ok || p == exe {
+		return false
+	}
+	old, err := os.Stat(p)
+	if err != nil {
+		return true
+	}
+	cur, err := os.Stat(exe)
+	return err == nil && old.ModTime().Before(cur.ModTime())
 }

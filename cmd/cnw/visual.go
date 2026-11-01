@@ -217,8 +217,10 @@ func reportVisual(report func(status, format string, a ...any)) {
 		report("INFO", "visual signal not installed (`cnw visual install` to enable)")
 		return
 	}
-	if exe, err := os.Executable(); err == nil && exe != path {
-		report("FAIL", "visual: the LaunchAgent runs %s, not this binary %s (run `cnw visual install`)", path, exe)
+	if _, err := os.Stat(path); err != nil {
+		report("FAIL", "visual: the LaunchAgent runs %s, which no longer exists (run `cnw visual install`)", path)
+	} else if exe, err := os.Executable(); err == nil && exe != path {
+		report("INFO", "visual: the LaunchAgent runs %s (another cnw install)", path)
 	}
 	if visual.HostAlive(st.Dir, time.Now()) {
 		report("OK", "visual host running")

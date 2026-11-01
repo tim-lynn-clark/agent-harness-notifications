@@ -28,8 +28,8 @@ func runHook(stdin io.Reader) {
 		return
 	}
 	rec := newRecord(now)
+	defer healVisual(st) // after the event is handled and logged
 	defer func() { _ = st.Log(rec) }()
-	healVisual(st)
 
 	e, err := event.Parse(stdin)
 	if err != nil {

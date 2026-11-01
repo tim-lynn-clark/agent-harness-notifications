@@ -53,8 +53,8 @@ func runNotify(args []string) int {
 	}
 	rec := newRecord(now)
 	rec.Event, rec.SessionID, rec.Result = "notify", *session, string(id)
+	defer healVisual(st) // after the event is handled and logged
 	defer func() { _ = st.Log(rec) }()
-	healVisual(st)
 
 	var seq int64
 	if *pending {
