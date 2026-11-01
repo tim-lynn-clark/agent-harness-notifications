@@ -168,3 +168,60 @@ func TestLogRotatesAndTails(t *testing.T) {
 		t.Fatalf("tail = %v err %v", lines, err)
 	}
 }
+
+func TestOnAttentionFiresOnlyWhenAttentionChanges(t *testing.T) {
+	calls := 0
+	st := Store{Dir: t.TempDir(), OnAttention: func() { calls++ }}
+	update := func(fn func(*Session)) {
+		t.Helper()
+		if _, err := st.Update("s", fn); err != nil {
+			t.Fatal(err)
+		}
+	}
+	update(func(s *Session) { s.NextSeq++ })
+	if calls != 0 {
+		t.Fatalf("unrelated update fired %d times", calls)
+	}
+	update(func(s *Session) { s.Attention = &Attention{SessionID: "s", Category: "done", SinceMS: 1} })
+	update(func(s *Session) { s.Attention = &Attention{SessionID: "s", Category: "done", SinceMS: 1} }) // same value
+	update(func(s *Session) { s.Attention.Category = "error" })
+	update(func(s *Session) { s.Attention = nil })
+	if calls != 3 {
+		t.Fatalf("set, change, clear should fire 3 times; got %d", calls)
+	}
+}
+
+func TestAttentionsListsOnlyWaitingSessions(t *testing.T) {
+	st := Store{Dir: t.TempDir()}
+	for _, id := range []string{"a", "b", "c"} {
+		id := id
+		if _, err := st.Update(id, func(s *Session) {
+			if id != "b" {
+				s.Attention = &Attention{SessionID: id, Category: "done"}
+			}
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := st.Attentions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]bool{}
+	for _, a := range got {
+		ids[a.SessionID] = true
+	}
+	if len(got) != 2 || !ids["a"] || !ids["c"] {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestLoadReadsWithoutCreating(t *testing.T) {
+	st := Store{Dir: t.TempDir()}
+	if s, err := st.Load("missing"); err != nil || s.Attention != nil {
+		t.Fatalf("missing: %+v %v", s, err)
+	}
+	if got, _ := st.Attentions(); len(got) != 0 {
+		t.Fatal("Load must not create a session")
+	}
+}
