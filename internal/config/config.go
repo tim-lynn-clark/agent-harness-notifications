@@ -120,13 +120,10 @@ func PathFor(goos string, getenv func(string) string, home string) string {
 
 var hexColor = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
 
-// Load reads path. A missing file yields built-in defaults: no configured
-// sounds, so every category falls back to its bundled clip (see For).
-// Warnings list unknown keys and categories; err is set for unparsable files
-// and out-of-range values.
-func Load(path string) (cfg *Config, warnings []string, err error) {
+// Default returns the built-in configuration, the one a missing file yields.
+func Default() *Config {
 	home, _ := os.UserHomeDir()
-	cfg = &Config{
+	return &Config{
 		Volume:       DefaultVolume,
 		Cooldown:     DefaultCooldown,
 		Announce:     DefaultAnnounce,
@@ -139,6 +136,14 @@ func Load(path string) (cfg *Config, warnings []string, err error) {
 		categories:   map[category.ID]categoryFile{},
 		home:         home,
 	}
+}
+
+// Load reads path. A missing file yields built-in defaults: no configured
+// sounds, so every category falls back to its bundled clip (see For).
+// Warnings list unknown keys and categories; err is set for unparsable files
+// and out-of-range values.
+func Load(path string) (cfg *Config, warnings []string, err error) {
+	cfg = Default()
 
 	var f file
 	md, err := toml.DecodeFile(path, &f)

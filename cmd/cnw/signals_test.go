@@ -5,9 +5,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tim-lynn-clark/agent-harness-notifications/internal/category"
 	"github.com/tim-lynn-clark/agent-harness-notifications/internal/state"
+	"github.com/tim-lynn-clark/agent-harness-notifications/internal/visual"
 )
 
 // signalEnv points cnw at temp state and a config that disables every
@@ -125,5 +127,29 @@ func TestSignalUsageErrors(t *testing.T) {
 		if code != 2 {
 			t.Errorf("%s: exit %d, want 2", name, code)
 		}
+	}
+}
+
+func TestResolveClearsSnapshotWithInvalidConfig(t *testing.T) {
+	st := signalEnv(t)
+	if err := os.WriteFile(os.Getenv("CNW_CONFIG"), []byte("[visual]\nhalo_after_s = 300\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	st, err := openStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Update("s", func(s *state.Session) {
+		s.Attention = &state.Attention{SessionID: "s", Category: "done", SinceMS: time.Now().UnixMilli()}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	runResolve([]string{"--session", "s"})
+	data, err := os.ReadFile(filepath.Join(st.Dir, visual.SnapshotFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"waiting":[]`) {
+		t.Fatalf("snapshot still lists the session: %s", data)
 	}
 }

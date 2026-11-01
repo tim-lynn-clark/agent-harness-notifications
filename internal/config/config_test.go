@@ -301,3 +301,15 @@ func TestInvalidVisualValues(t *testing.T) {
 		})
 	}
 }
+
+func TestDefaultMatchesLoadOfMissingFile(t *testing.T) {
+	loaded, _, err := Load(filepath.Join(t.TempDir(), "missing.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := Default()
+	if d.HaloAfter != loaded.HaloAfter || d.CritterAfter != loaded.CritterAfter || d.StaleAfter != loaded.StaleAfter ||
+		d.Volume != loaded.Volume || d.Cooldown != loaded.Cooldown {
+		t.Fatalf("Default() %+v differs from Load %+v", d, loaded)
+	}
+}
