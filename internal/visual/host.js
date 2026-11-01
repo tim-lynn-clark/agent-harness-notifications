@@ -165,6 +165,8 @@ function syncScreens() {
   screensKey = key;
   for (const o of overlays) o.window.orderOut(null);
   overlays = frames.map(makeOverlay);
+  dropHalo();
+  critter = null;
   auroraKey = null;
 }
 
@@ -217,6 +219,214 @@ function buildAurora(o, colors, reduce) {
   o.root.addSublayer(box);
   fadeIn(box);
   return box;
+}
+
+// ---- rung 2: halo -------------------------------------------------------------
+
+const HALO_R = 22;
+let halo = null; // {box, ring, label, key, overlay}
+let haloTimer = null;
+let lastPointer = '';
+
+function pointerOverlay() {
+  const m = $.NSEvent.mouseLocation;
+  for (const o of overlays) {
+    const f = o.frame;
+    if (m.x >= f.x && m.x < f.x + f.w && m.y >= f.y && m.y < f.y + f.h) return { o: o, x: m.x - f.x, y: m.y - f.y };
+  }
+  return null;
+}
+
+// textLayer takes CGColors (see cgColor) for fg and bg.
+function textLayer(text, size, fg, bg) {
+  const l = $.CATextLayer.layer;
+  l.setString($(text));
+  l.setFontSize(size);
+  l.setForegroundColor(fg);
+  l.setBackgroundColor(bg);
+  l.setCornerRadius(6);
+  l.setAlignmentMode($('center'));
+  l.setContentsScale($.NSScreen.mainScreen.backingScaleFactor);
+  const sz = l.preferredFrameSize;
+  l.setBounds($.NSMakeRect(0, 0, sz.width + 14, sz.height + 4));
+  return l;
+}
+
+function renderHalo(now) {
+  const top = waiting.find((e) => rung(e, now) >= 2);
+  if (!top) {
+    dropHalo();
+    return;
+  }
+  const others = waiting.length - 1;
+  const text = top.label + ' · ' + top.category.replace(/_/g, ' ') + (others > 0 ? ' +' + others : '');
+  const key = top.color + '|' + text;
+  if (!halo || halo.key !== key) {
+    dropHalo();
+    const box = $.CALayer.layer;
+    const ring = $.CALayer.layer;
+    ring.setBounds($.NSMakeRect(0, 0, HALO_R * 2, HALO_R * 2));
+    ring.setCornerRadius(HALO_R);
+    ring.setBorderWidth(3);
+    ring.setBorderColor(cgColor(top.color, 0.9));
+    ring.setBackgroundColor(cgColor(top.color, 0.12));
+    box.addSublayer(ring);
+    const label = textLayer(text, 13, cgColor('#FFFFFF', 1), cgColor(top.color, 0.85));
+    box.addSublayer(label);
+    if (!reduceMotion()) loop(ring, 'opacity', 1, 0.45, 0.9, 'breathe');
+    halo = { box: box, ring: ring, label: label, key: key, overlay: null };
+  }
+  if (!haloTimer) haloTimer = $.NSTimer.scheduledTimerWithTimeIntervalRepeatsBlock(1 / 60, true, () => followPointer());
+  followPointer();
+}
+
+// followPointer runs from a repeating timer; an exception escaping it would stop the timer.
+function followPointer() {
+  try {
+    if (!halo) return;
+    const p = pointerOverlay();
+    if (!p) return;
+    const key = Math.round(p.x) + ',' + Math.round(p.y) + ',' + overlays.indexOf(p.o);
+    if (key === lastPointer) return; // pointer still: skip the frame
+    lastPointer = key;
+    const moved = halo.overlay !== p.o;
+    noAnim(() => {
+      if (moved) {
+        halo.box.removeFromSuperlayer;
+        p.o.root.addSublayer(halo.box);
+        halo.overlay = p.o;
+      }
+      halo.ring.setPosition($.NSMakePoint(p.x, p.y));
+      const lw = halo.label.bounds.size.width;
+      halo.label.setPosition($.NSMakePoint(p.x + HALO_R + 8 + lw / 2, p.y - HALO_R));
+    });
+    if (moved) fadeIn(halo.box);
+  } catch (e) {
+    console.log('cnw visual host: ' + e);
+  }
+}
+
+function dropHalo() {
+  if (haloTimer) {
+    haloTimer.invalidate;
+    haloTimer = null;
+  }
+  if (halo) {
+    if (halo.overlay) fadeOut(halo.box);
+    halo = null;
+  }
+  lastPointer = '';
+}
+
+// ---- rung 3: critter ----------------------------------------------------------
+
+const GLYPH = {
+  question: '?', done_question: '?', plan_approval: '✎', permission: '!', mcp_input: '⇄',
+  done: '✓', done_background: '✓', error: '✕', usage_limit: '⏳', idle_reminder: '…',
+};
+let critter = null; // {key, overlay, box, body, feet, sign}
+
+// part adds a rounded rectangle to parent with its bottom centre at (x, y); color is a CGColor.
+function part(parent, x, y, w, h, radius, color) {
+  const l = $.CALayer.layer;
+  l.setAnchorPoint($.NSMakePoint(0.5, 0));
+  l.setBounds($.NSMakeRect(0, 0, w, h));
+  l.setPosition($.NSMakePoint(x, y));
+  l.setCornerRadius(radius);
+  l.setBackgroundColor(color);
+  parent.addSublayer(l);
+  return l;
+}
+
+function blink(eye) {
+  const a = $.CAKeyframeAnimation.animationWithKeyPath($('transform.scale.y'));
+  a.setValues($([num(1), num(1), num(0.1), num(1)]));
+  a.setKeyTimes($([num(0), num(0.92), num(0.96), num(1)]));
+  a.setDuration(4);
+  a.setRepeatCount(1e9);
+  eye.addAnimationForKey(a, $('blink'));
+}
+
+function moveTo(l, fromX, toX, dur) {
+  const a = $.CABasicAnimation.animationWithKeyPath($('position.x'));
+  a.setFromValue(num(fromX));
+  a.setToValue(num(toX));
+  a.setDuration(dur);
+  noAnim(() => l.setPosition($.NSMakePoint(toX, 0)));
+  l.addAnimationForKey(a, $('walk'));
+}
+
+function walk(c, fromX, toX, dur) {
+  moveTo(c.box, fromX, toX, dur);
+  loop(c.body, 'transform.scale.y', 1, 0.9, 0.18, 'squash', dur);
+  loop(c.feet[0], 'position.y', 0, 6, 0.18, 'step', dur);
+  loop(c.feet[1], 'position.y', 6, 0, 0.18, 'step', dur);
+}
+
+function critterKey(e) {
+  return e.id + '|' + e.category + '|' + e.since;
+}
+
+function renderCritter(now) {
+  const top = waiting.find((e) => rung(e, now) >= 3);
+  if (critter && (!top || critterKey(top) !== critter.key)) critterLeave();
+  if (top && !critter) critterEnter(top);
+}
+
+function critterEnter(e) {
+  const p = pointerOverlay();
+  const o = p ? p.o : overlays[0];
+  if (!o) return;
+  const reduce = reduceMotion();
+  const W = o.frame.w;
+  const box = $.CALayer.layer;
+  box.setAnchorPoint($.NSMakePoint(0.5, 0));
+  box.setBounds($.NSMakeRect(0, 0, 120, 160));
+  const dark = cgColor('#262626', 1);
+  const feet = [part(box, 46, 0, 18, 8, 4, dark), part(box, 74, 0, 18, 8, 4, dark)];
+  const body = part(box, 60, 6, 64, 56, 28, cgColor(e.color, 1));
+  for (const x of [20, 44]) {
+    const eye = part(body, x, 26, 14, 16, 7, cgColor('#FFFFFF', 1));
+    part(eye, 7, 3, 6, 7, 3, cgColor('#000000', 1));
+    if (!reduce) blink(eye);
+  }
+  const sign = $.CALayer.layer;
+  sign.setAnchorPoint($.NSMakePoint(0.5, 0));
+  sign.setBounds($.NSMakeRect(0, 0, 4, 100));
+  sign.setPosition($.NSMakePoint(100, 30));
+  part(sign, 2, 0, 4, 70, 2, cgColor('#734D26', 1));
+  const board = textLayer((GLYPH[e.category] || '!') + '  ' + e.label, 13, cgColor('#000000', 1), cgColor('#FFFFFF', 1));
+  board.setBorderWidth(2);
+  board.setBorderColor(cgColor(e.color, 1));
+  board.setAnchorPoint($.NSMakePoint(0.5, 0));
+  board.setPosition($.NSMakePoint(2, 66));
+  sign.addSublayer(board);
+  box.addSublayer(sign);
+  o.root.addSublayer(box);
+  critter = { key: critterKey(e), overlay: o, box: box, body: body, feet: feet, sign: sign };
+  const stopX = W - 220;
+  if (reduce) {
+    noAnim(() => box.setPosition($.NSMakePoint(stopX, 0)));
+    fadeIn(box);
+  } else {
+    walk(critter, W + 80, stopX, 3);
+    after(3, () => loop(sign, 'transform.rotation.z', -0.05, 0.05, 1.6, 'sway'));
+  }
+}
+
+function critterLeave() {
+  const c = critter;
+  critter = null;
+  if (reduceMotion()) {
+    fadeOut(c.box);
+    return;
+  }
+  c.sign.removeAnimationForKey($('sway'));
+  loop(c.sign, 'transform.rotation.z', -0.35, 0.35, 0.2, 'wave', 1.2);
+  after(1.2, () => {
+    walk(c, c.box.position.x, c.overlay.frame.w + 120, 2.5);
+    after(2.6, () => c.box.removeFromSuperlayer);
+  });
 }
 
 // ---- orb ----------------------------------------------------------------------
@@ -313,6 +523,8 @@ function tick() {
     waiting = currentWaiting(now);
     syncScreens();
     renderAurora();
+    renderHalo(now);
+    renderCritter(now);
     renderOrb();
   } catch (e) {
     console.log('cnw visual host: ' + e);
