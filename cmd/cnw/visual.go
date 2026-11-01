@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"runtime"
 	"time"
 
@@ -49,6 +51,10 @@ func runVisual(args []string) int {
 		return runVisualJump(args[1:])
 	case "preview":
 		return runVisualPreview(args[1:])
+	case "install":
+		return runVisualInstall()
+	case "uninstall":
+		return runVisualUninstall()
 	}
 	fmt.Fprint(os.Stderr, visualUsage)
 	return 2
@@ -134,4 +140,96 @@ func runVisualPreview(args []string) int {
 	}
 	fmt.Printf("previewing %s for 12 s: glow, halo at 3 s, critter at 6 s (highest rung %d)\n", id, c.MaxRung)
 	return 0
+}
+
+func runVisualInstall() int {
+	exe, err := os.Executable()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	st, err := openStore()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	if err := visual.Install(home, st.Dir, exe, jump.Exec); err != nil {
+		fmt.Fprintln(os.Stderr, "cnw visual install:", err)
+		return 1
+	}
+	refreshVisual(st)
+	fmt.Printf("installed %s\nthe orb is in the menu bar; try: cnw visual preview\n", visual.PlistPath(home))
+	return 0
+}
+
+func runVisualUninstall() int {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	st, err := openStore()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	if err := visual.Uninstall(home, st.Dir, jump.Exec); err != nil {
+		fmt.Fprintln(os.Stderr, "cnw visual uninstall:", err)
+		return 1
+	}
+	fmt.Println("removed the visual signal")
+	return 0
+}
+
+// healVisual re-points an installed host at this binary after a plugin
+// upgrade. It never fails the caller.
+func healVisual(st state.Store) {
+	if runtime.GOOS != "darwin" {
+		return
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	_, _ = visual.Heal(home, st.Dir, exe, jump.Exec)
+}
+
+// reportVisual adds the visual signal's doctor lines (spec §9).
+func reportVisual(report func(status, format string, a ...any)) {
+	st, err := openStore()
+	if err != nil {
+		return
+	}
+	if _, err := exec.LookPath("osascript"); err != nil {
+		report("FAIL", "visual: osascript not found")
+	}
+	path, installed := visual.InstalledPath(st.Dir)
+	if !installed {
+		report("INFO", "visual signal not installed (`cnw visual install` to enable)")
+		return
+	}
+	if exe, err := os.Executable(); err == nil && exe != path {
+		report("FAIL", "visual: the LaunchAgent runs %s, not this binary %s (run `cnw visual install`)", path, exe)
+	}
+	if visual.HostAlive(st.Dir, time.Now()) {
+		report("OK", "visual host running")
+	} else {
+		report("FAIL", "visual host not running: no heartbeat in 15 s (log: %s)", filepath.Join(st.Dir, visual.LogFile))
+	}
+	report("INFO", "visual: macOS asks once for permission to control Terminal or iTerm2 on the first jump")
+	if os.Getenv("ORCA_PANE_KEY") != "" {
+		orca := filepath.Join(os.Getenv("ORCA_CLI_BIN_DIR"), "orca")
+		if _, err := os.Stat(orca); err != nil {
+			report("WARN", "visual: orca CLI not found at %s; jumps only bring Orca to the front", orca)
+		}
+	}
 }
