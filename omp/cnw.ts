@@ -6,10 +6,21 @@
 // you answer straight away silent.
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const PROMPT_GATE_MS = 6000;
 const IDLE_REMINDER_MS = 60_000;
+
+// The cnw commands a user runs by hand, each registered as /cnw:<name> like the plugin's
+// skills/<name> in Claude Code. hook, notify, resolve and turn-end are the agents' own.
+const USER_COMMANDS = [
+  { name: "doctor", description: "Check the cnw setup (config, clips, audio player, spoken names) and show recent sound events" },
+  { name: "play", description: "Play a category's configured sound: /cnw:play CATEGORY" },
+  { name: "init", description: "Write the default cnw config file if none exists" },
+  { name: "voices", description: "List the bundled voices, or hear one: /cnw:voices [play ID [CATEGORY]]" },
+  { name: "kokoro", description: "Spoken names in the clips' voice: /cnw:kokoro install [--from DIR] | urls | remove" },
+];
 
 type TimerHandle = unknown;
 interface Ctx {
@@ -45,8 +56,8 @@ function cnwBinary(): string | undefined {
   return existsSync(path) ? path : undefined;
 }
 
-// Runs cnw to completion and returns everything it printed: doctor reports to
-// stdout and exits 1 when a check fails, and the report matters most then.
+// Runs cnw to completion and returns everything it printed. Commands report failures
+// on stderr and exit non-zero, and the output matters most then.
 function capture(bin: string, args: string[], cwd?: string): Promise<string> {
   const { promise, resolve } = Promise.withResolvers<string>();
   let out = "";
@@ -56,6 +67,15 @@ function capture(bin: string, args: string[], cwd?: string): Promise<string> {
   child.on("error", (err) => resolve(`cnw ${args.join(" ")}: ${err.message}`));
   child.on("close", () => resolve(out.trimEnd()));
   return promise;
+}
+
+// Splits what the user typed after a command into words, as a shell would for plain
+// words, "double" or 'single' quoted words, and a leading ~ (no shell runs cnw here).
+function splitArgs(line: string): string[] {
+  return Array.from(line.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g), ([, dq, sq, word]) => {
+    if (word !== undefined && (word === "~" || word.startsWith("~/"))) return homedir() + word.slice(1);
+    return dq ?? sq ?? word;
+  });
 }
 
 // Final assistant message of a run: its stop reason and text.
@@ -81,16 +101,26 @@ function lastReply(event: unknown): { stopReason?: string; text: string } {
 export default function cnwExtension(pi: ExtensionAPI): void {
   const bin = cnwBinary();
 
-  // /cnw:doctor, the same name Claude Code gives the plugin's skills/doctor skill.
-  pi.registerCommand("cnw:doctor", {
-    description: "Check the cnw setup (config, clips, audio player, spoken names) and show recent sound events",
-    handler: async (_args, ctx) => {
-      const report = bin
-        ? await capture(bin, ["doctor"], ctx.cwd)
-        : `FAIL  cnw has no binary for ${process.platform}-${process.arch} (a clone needs ./scripts/build.sh)`;
-      pi.sendMessage({ customType: "cnw.doctor", content: "```text\n" + report + "\n```", display: true });
-    },
-  });
+  for (const { name, description } of USER_COMMANDS) {
+    pi.registerCommand(`cnw:${name}`, {
+      description,
+      handler: async (line, ctx) => {
+        const args = [name, ...splitArgs(line)];
+        const shown = "`" + ["cnw", name, line.trim()].filter(Boolean).join(" ") + "`";
+        if (!bin) {
+          const missing = `cnw has no binary for ${process.platform}-${process.arch} (a clone needs ./scripts/build.sh)`;
+          pi.sendMessage({ customType: "cnw.command", content: `${shown}\n\n${missing}`, display: true });
+          return;
+        }
+        if (name === "kokoro" && args[1] === "install") {
+          const notice = `${shown}: installing Kokoro (a download is ~376 MB); this can take a few minutes.`;
+          pi.sendMessage({ customType: "cnw.command", content: notice, display: true });
+        }
+        const out = (await capture(bin, args, ctx.cwd)) || "(done, no output)";
+        pi.sendMessage({ customType: "cnw.command", content: `${shown}\n\n\`\`\`text\n${out}\n\`\`\``, display: true });
+      },
+    });
+  }
 
   if (!bin) return; // not built for this platform: stay silent
   const fallbackSession = `omp-${process.pid}`;

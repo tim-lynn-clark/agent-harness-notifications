@@ -96,23 +96,31 @@ In a Claude Code or omp session, run the slash command:
 
 ```text
 /cnw:doctor           # no FAIL lines; each category shows its clip
+/cnw:play question    # hear any category's clip
 ```
 
-Claude Code shows the report and explains any FAIL or WARN line; omp shows the report as is.
+Every `cnw` command this README asks you to run has a slash command with the same arguments:
 
-The plugin doesn't put `cnw` on your `PATH`. To run it from a terminal, `cnw` below means the
-plugin's launcher:
+| Slash command | Runs |
+|---|---|
+| `/cnw:doctor` | `cnw doctor` |
+| `/cnw:play CATEGORY` | `cnw play CATEGORY` |
+| `/cnw:init` | `cnw init` |
+| `/cnw:voices [play ID [CATEGORY]]` | `cnw voices …` |
+| `/cnw:kokoro install [--from DIR] \| urls \| remove` | `cnw kokoro …` |
+
+Claude Code shows the output and explains any error or FAIL/WARN line; omp shows the output as
+is. `notify`, `resolve`, `turn-end` and `hook` are what the agents themselves run, so they have
+none.
+
+The plugin doesn't put `cnw` on your `PATH`. To run a command from a terminal instead, `cnw` in
+this README means the plugin's launcher:
 
 | Install | Launcher |
 |---|---|
 | Claude Code, from GitHub | `~/.claude/plugins/cache/cnw-marketplace/cnw/<version>/bin/cnw` (under `$CLAUDE_CONFIG_DIR` instead of `~/.claude` when that is set) |
 | omp, from GitHub | `~/.omp/plugins/cache/plugins/cnw-marketplace___cnw___<version>/bin/cnw` |
 | A clone | `./bin/cnw` |
-
-```bash
-cnw doctor            # the same report as /cnw:doctor
-cnw play question     # hear any category's clip
-```
 
 Then in a Claude Code session in a scratch directory:
 

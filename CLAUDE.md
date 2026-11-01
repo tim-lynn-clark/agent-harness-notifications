@@ -11,8 +11,8 @@ plugin and an omp extension around one Go binary. User-facing behaviour is in `R
 | `cmd/cnw/` | CLI entry points: `hook`, `notify`, `resolve`, `turn-end`, `play`, `init`, `voices`, `kokoro`, `doctor` (usage in `main.go`) |
 | `internal/` | `event` (hook payload), `classify` (event → category, no I/O), `category` (categories and defaults), `app` (applies events to state; `Claim` decides whether a scheduled sound plays), `state` (session state, event log), `config` (TOML), `audio` (players), `label` + `announce` (spoken project names, chimes), `kokoro` (opt-in Kokoro engine install, name synthesis, loudness levelling), `wav` (16-bit mono WAV) |
 | `hooks/hooks.json` | Claude Code hooks; every handler runs `bin/cnw hook` async |
-| `skills/doctor/SKILL.md` | `/cnw:doctor` in Claude Code; omp's `/cnw:doctor` is registered in `omp/cnw.ts` |
-| `omp/cnw.ts` | omp extension; drives `cnw notify/resolve/turn-end` and registers `/cnw:doctor` (declared in `package.json`) |
+| `skills/<command>/SKILL.md` | `/cnw:doctor`, `play`, `init`, `voices`, `kokoro` in Claude Code; omp's are registered in `omp/cnw.ts` (spec §8.5) |
+| `omp/cnw.ts` | omp extension; drives `cnw notify/resolve/turn-end` and registers the `/cnw:*` commands (declared in `package.json`) |
 | `bin/cnw` | POSIX sh launcher that picks `bin/<os>-<arch>/cnw` |
 | `sounds/<voice>/*.wav` | Bundled default clips, one directory per Kokoro voice (`kokoro_voice` picks one), one clip per category |
 | `docs/specs/` | Design specs: the source of truth for behaviour; update them with behaviour changes |
