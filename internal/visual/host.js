@@ -167,6 +167,7 @@ function syncScreens() {
   overlays = frames.map(makeOverlay);
   dropHalo();
   critter = null;
+  critterGone = 0;
   auroraKey = null;
 }
 
@@ -224,9 +225,11 @@ function buildAurora(o, colors, reduce) {
 // ---- rung 2: halo -------------------------------------------------------------
 
 const HALO_R = 22;
+const HALO_IDLE_MS = 500; // stop the 60 Hz timer after the pointer rests this long
 let halo = null; // {box, ring, label, key, overlay}
 let haloTimer = null;
 let lastPointer = '';
+let lastMove = 0;
 
 function pointerOverlay() {
   const m = $.NSEvent.mouseLocation;
@@ -273,37 +276,52 @@ function renderHalo(now) {
     box.addSublayer(ring);
     const label = textLayer(text, 13, cgColor('#FFFFFF', 1), cgColor(top.color, 0.85));
     box.addSublayer(label);
+    // The box has zero size; ring and label sit at fixed offsets so each frame moves only the box.
+    noAnim(() => {
+      ring.setPosition($.NSMakePoint(0, 0));
+      label.setPosition($.NSMakePoint(HALO_R + 8 + label.bounds.size.width / 2, -HALO_R));
+    });
     if (!reduceMotion()) loop(ring, 'opacity', 1, 0.45, 0.9, 'breathe');
     halo = { box: box, ring: ring, label: label, key: key, overlay: null };
   }
-  if (!haloTimer) haloTimer = $.NSTimer.scheduledTimerWithTimeIntervalRepeatsBlock(1 / 60, true, () => followPointer());
-  followPointer();
+  // The poll restarts the 60 Hz timer once the pointer moves again.
+  if (followPointer() && !haloTimer) {
+    haloTimer = $.NSTimer.scheduledTimerWithTimeIntervalRepeatsBlock(1 / 60, true, () => haloFrame());
+  }
 }
 
-// followPointer runs from a repeating timer; an exception escaping it would stop the timer.
-function followPointer() {
+// haloFrame runs from the repeating timer; an exception escaping it would stop the timer.
+function haloFrame() {
   try {
-    if (!halo) return;
-    const p = pointerOverlay();
-    if (!p) return;
-    const key = Math.round(p.x) + ',' + Math.round(p.y) + ',' + overlays.indexOf(p.o);
-    if (key === lastPointer) return; // pointer still: skip the frame
-    lastPointer = key;
-    const moved = halo.overlay !== p.o;
-    noAnim(() => {
-      if (moved) {
-        halo.box.removeFromSuperlayer;
-        p.o.root.addSublayer(halo.box);
-        halo.overlay = p.o;
-      }
-      halo.ring.setPosition($.NSMakePoint(p.x, p.y));
-      const lw = halo.label.bounds.size.width;
-      halo.label.setPosition($.NSMakePoint(p.x + HALO_R + 8 + lw / 2, p.y - HALO_R));
-    });
-    if (moved) fadeIn(halo.box);
+    if (!followPointer() && Date.now() - lastMove >= HALO_IDLE_MS && haloTimer) {
+      haloTimer.invalidate;
+      haloTimer = null;
+    }
   } catch (e) {
     console.log('cnw visual host: ' + e);
   }
+}
+
+// followPointer moves the halo to the pointer and reports whether the pointer moved.
+function followPointer() {
+  if (!halo) return false;
+  const p = pointerOverlay();
+  if (!p) return false;
+  const key = Math.round(p.x) + ',' + Math.round(p.y) + ',' + overlays.indexOf(p.o);
+  if (key === lastPointer) return false; // pointer still: skip the frame
+  lastPointer = key;
+  lastMove = Date.now();
+  const moved = halo.overlay !== p.o;
+  noAnim(() => {
+    if (moved) {
+      halo.box.removeFromSuperlayer;
+      p.o.root.addSublayer(halo.box);
+      halo.overlay = p.o;
+    }
+    halo.box.setPosition($.NSMakePoint(p.x, p.y));
+  });
+  if (moved) fadeIn(halo.box);
+  return true;
 }
 
 function dropHalo() {
@@ -325,6 +343,7 @@ const GLYPH = {
   done: '✓', done_background: '✓', error: '✕', usage_limit: '⏳', idle_reminder: '…',
 };
 let critter = null; // {key, overlay, box, body, feet, sign}
+let critterGone = 0; // when the leaving critter is off screen, ms
 
 // part adds a rounded rectangle to parent with its bottom centre at (x, y); color is a CGColor.
 function part(parent, x, y, w, h, radius, color) {
@@ -369,8 +388,8 @@ function critterKey(e) {
 
 function renderCritter(now) {
   const top = waiting.find((e) => rung(e, now) >= 3);
-  if (critter && (!top || critterKey(top) !== critter.key)) critterLeave();
-  if (top && !critter) critterEnter(top);
+  if (critter && (!top || critterKey(top) !== critter.key)) critterGone = now + critterLeave();
+  if (top && !critter && now >= critterGone) critterEnter(top);
 }
 
 function critterEnter(e) {
@@ -414,12 +433,13 @@ function critterEnter(e) {
   }
 }
 
+// critterLeave sends the critter off and returns how long that takes, ms.
 function critterLeave() {
   const c = critter;
   critter = null;
   if (reduceMotion()) {
     fadeOut(c.box);
-    return;
+    return 350;
   }
   c.sign.removeAnimationForKey($('sway'));
   loop(c.sign, 'transform.rotation.z', -0.35, 0.35, 0.2, 'wave', 1.2);
@@ -427,6 +447,7 @@ function critterLeave() {
     walk(c, c.box.position.x, c.overlay.frame.w + 120, 2.5);
     after(2.6, () => c.box.removeFromSuperlayer);
   });
+  return 3800;
 }
 
 // ---- orb ----------------------------------------------------------------------
