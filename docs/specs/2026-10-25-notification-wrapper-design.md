@@ -308,10 +308,11 @@ agents instead get a slash command for each command a user runs: `/cnw:doctor`, 
 - **Claude Code:** one skill per command, `skills/<command>/SKILL.md`, named `/cnw:<command>` from
   the plugin name. They must be skills: Claude Code substitutes `${CLAUDE_PLUGIN_ROOT}` only in
   plugin skills. `disable-model-invocation: true` keeps Claude from running them unasked.
-  - `doctor`, `init`, `play`, `voices` inject `` !`"${CLAUDE_PLUGIN_ROOT}/bin/cnw" <command> $ARGUMENTS || true` ``,
-    and `allowed-tools` lists `Bash("${CLAUDE_PLUGIN_ROOT}/bin/cnw" <command>)` and
-    `Bash(… <command> *)`. An injected command that no rule allows aborts the skill instead of
-    prompting.
+  - `doctor`, `init`, `play`, `voices` inject `` !`"${CLAUDE_PLUGIN_ROOT}/bin/cnw" <command> … || true` ``,
+    and `allowed-tools` pre-approves exactly that invocation: `play` and `voices` take arguments, so
+    they append `$ARGUMENTS` and list both `Bash("${CLAUDE_PLUGIN_ROOT}/bin/cnw" <command>)` and
+    `Bash(… <command> *)`; `doctor` and `init` take none and list only the first. An injected
+    command that no rule allows aborts the skill instead of prompting.
   - The launcher path is quoted: install paths can contain spaces (a Windows user name, for
     example), and v0.4.4's unquoted doctor skill failed on them.
   - `|| true` is required: when an injected command exits non-zero (doctor exits 1 on any FAIL,
@@ -324,9 +325,12 @@ agents instead get a slash command for each command a user runs: `/cnw:doctor`, 
 - **omp:** `omp/cnw.ts` registers `cnw:<command>` for the same five with `pi.registerCommand`. It
   splits the typed arguments into words (double or single quotes group words; a leading unquoted
   `~` becomes the home directory, as in a shell), runs the binary in the session's cwd, and posts
-  the command line plus stdout and stderr as a displayed `cnw.command` custom message; no model
-  turn runs. `kokoro install` first posts a notice that it can take minutes. omp's Markdown
-  commands neither run `` !`…` `` nor expand `${CLAUDE_PLUGIN_ROOT}`, so the skills can't serve omp.
+  the command line plus stdout and stderr (decoded as UTF-8) as a displayed `cnw.command` custom
+  message; no model turn runs. `kokoro install` without `--from` first posts a notice that, unless
+  Kokoro is already installed, it downloads ~376 MB and can take minutes. omp's Markdown commands
+  neither run `` !`…` `` nor expand `${CLAUDE_PLUGIN_ROOT}`, so the skills can't serve omp. omp
+  loads extension modules only when a session starts (`/reload-plugins` does not), so the commands
+  appear in sessions started after the plugin is installed.
 
 ## 9. Audio backends
 
@@ -403,7 +407,8 @@ omp (Oh My Pi) has no Claude-style hooks; its extensions receive in-process even
 declared in the root `package.json` (`omp.extensions`), maps them to the direct signals in §8.3.
 omp installs it from the same `.claude-plugin/marketplace.json` (`omp plugin marketplace add
 <owner/repo>`, `omp plugin install cnw@cnw-marketplace`) as a copied snapshot, so a new release (or,
-for `cnw-dev`, a rebuild) needs a reinstall.
+for `cnw-dev`, a rebuild) needs a reinstall: `omp plugin upgrade <plugin>@cnw-marketplace` does it
+in one step. The extension loads only in sessions started afterwards.
 
 omp reports prompt resolution directly, so no "still unanswered" notification is needed. The
 extension registers a prompt with `notify --pending --after 6000` (the same ~6 s gate as Claude
