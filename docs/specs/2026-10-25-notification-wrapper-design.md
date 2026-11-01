@@ -222,7 +222,7 @@ agent-harness-notifications/
 ├── .claude-plugin/plugin.json
 ├── .claude-plugin/marketplace.json  # "cnw-marketplace": cnw (github, ref release), cnw-dev ("./")
 ├── hooks/hooks.json
-├── skills/doctor/SKILL.md        # /cnw:doctor in Claude Code (§8.5)
+├── skills/<command>/SKILL.md     # /cnw:<command> in Claude Code (§8.5)
 ├── sounds/<voice>/<category>.wav # bundled default clips, one directory per Kokoro voice
 └── bin/
     ├── cnw                       # POSIX sh launcher: selects the platform binary
@@ -298,21 +298,35 @@ shell would read a different directory than the hooks write.
   `ignored`/`cancel`, play outcome, and `ORCA_WORKTREE_ID` / `ORCA_PANE_KEY` when present. Rotated at
   1 MiB, keeping one previous file. Message text is not logged.
 
-### 8.5 `/cnw:doctor`
+### 8.5 Slash commands (`/cnw:<command>`)
 
-The plugin never puts `cnw` on `PATH`, so `cnw doctor` needs the launcher's full path. Both
-agents get the same slash command instead:
+The plugin never puts `cnw` on `PATH`, so running it by hand needs the launcher's full path. Both
+agents instead get a slash command for each command a user runs: `/cnw:doctor`, `/cnw:play`,
+`/cnw:init`, `/cnw:voices`, `/cnw:kokoro`, taking the same arguments. `hook`, `notify`, `resolve`,
+`turn-end` and `fire` are the agents' own and get none.
 
-- **Claude Code:** `skills/doctor/SKILL.md`, named `/cnw:doctor` from the plugin name. Its body
-  injects `` !`${CLAUDE_PLUGIN_ROOT}/bin/cnw doctor || true` `` and `allowed-tools` grants that exact
-  command, so it runs without a permission prompt. It must be a skill: Claude Code substitutes
-  `${CLAUDE_PLUGIN_ROOT}` only in plugin skills. `|| true` is required: when the injected command
-  exits non-zero (doctor exits 1 on any FAIL), Claude Code drops the whole skill and prints nothing.
-  `disable-model-invocation: true` keeps Claude from running it unasked.
-- **omp:** `omp/cnw.ts` registers `cnw:doctor` with `pi.registerCommand`, runs the binary in the
-  session's cwd, and posts stdout and stderr as a displayed `cnw.doctor` custom message; no model
-  turn runs. omp's Markdown commands neither run `` !`…` `` nor expand `${CLAUDE_PLUGIN_ROOT}`, so
-  the skill can't serve omp.
+- **Claude Code:** one skill per command, `skills/<command>/SKILL.md`, named `/cnw:<command>` from
+  the plugin name. They must be skills: Claude Code substitutes `${CLAUDE_PLUGIN_ROOT}` only in
+  plugin skills. `disable-model-invocation: true` keeps Claude from running them unasked.
+  - `doctor`, `init`, `play`, `voices` inject `` !`"${CLAUDE_PLUGIN_ROOT}/bin/cnw" <command> $ARGUMENTS || true` ``,
+    and `allowed-tools` lists `Bash("${CLAUDE_PLUGIN_ROOT}/bin/cnw" <command>)` and
+    `Bash(… <command> *)`. An injected command that no rule allows aborts the skill instead of
+    prompting.
+  - The launcher path is quoted: install paths can contain spaces (a Windows user name, for
+    example), and v0.4.4's unquoted doctor skill failed on them.
+  - `|| true` is required: when an injected command exits non-zero (doctor exits 1 on any FAIL,
+    a usage error exits 2), Claude Code drops the whole skill and prints nothing.
+  - `kokoro` is not injected, because injected commands stop after 2 minutes and `install`
+    downloads about 376 MB. Its skill tells Claude to run the command with the Bash tool and a
+    10-minute timeout, pre-approved by the same `allowed-tools` rules.
+  - Each skill sets `enabled: false`, which Claude Code ignores and omp honours. Without it omp
+    also lists them as `/skill:<command>`, which would hand the model the unexpanded text.
+- **omp:** `omp/cnw.ts` registers `cnw:<command>` for the same five with `pi.registerCommand`. It
+  splits the typed arguments into words (double or single quotes group words; a leading unquoted
+  `~` becomes the home directory, as in a shell), runs the binary in the session's cwd, and posts
+  the command line plus stdout and stderr as a displayed `cnw.command` custom message; no model
+  turn runs. `kokoro install` first posts a notice that it can take minutes. omp's Markdown
+  commands neither run `` !`…` `` nor expand `${CLAUDE_PLUGIN_ROOT}`, so the skills can't serve omp.
 
 ## 9. Audio backends
 
@@ -407,8 +421,8 @@ Code) and cancels it with `resolve`. Events from subagents (`ctx.agent.kind === 
 Session ids come from `ctx.sessionManager.getSessionId()`. Verified live on omp 18.12.6: open
 question, open approval, quick answer, quick deny, closing question, idle reminder, and interrupt.
 
-The extension also registers `/cnw:doctor` (§8.5) whether or not a binary exists; without one it
-reports the missing platform instead of a report.
+The extension also registers the `/cnw:*` commands (§8.5) whether or not a binary exists; without
+one they report the missing platform instead of running.
 
 ## Appendix A. Recorded payloads (Claude Code 2.1.301, trimmed)
 
