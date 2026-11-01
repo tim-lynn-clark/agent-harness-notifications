@@ -255,3 +255,49 @@ func TestAnnounceInvalidValues(t *testing.T) {
 		})
 	}
 }
+
+func TestVisualSettings(t *testing.T) {
+	cfg, _, err := Load(write(t, `
+[visual]
+halo_after_s = 10
+critter_after_s = 20
+stale_after_h = 2
+
+[categories.permission]
+color = "#112233"
+max_rung = 1
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.HaloAfter != 10*time.Second || cfg.CritterAfter != 20*time.Second || cfg.StaleAfter != 2*time.Hour {
+		t.Fatalf("thresholds: halo %s critter %s stale %s", cfg.HaloAfter, cfg.CritterAfter, cfg.StaleAfter)
+	}
+	if p := cfg.For(category.Permission); p.Color != "#112233" || p.MaxRung != 1 {
+		t.Fatalf("configured category: %+v", p)
+	}
+	// An unconfigured category keeps its built-in colour and rung.
+	d, _ := category.DefaultFor(category.Done)
+	if got := cfg.For(category.Done); got.Color != d.Color || got.MaxRung != d.MaxRung {
+		t.Fatalf("unconfigured category: %+v, want %s/%d", got, d.Color, d.MaxRung)
+	}
+}
+
+func TestInvalidVisualValues(t *testing.T) {
+	for name, body := range map[string]string{
+		"negative halo":               "[visual]\nhalo_after_s = -1\n",
+		"critter equals halo":         "[visual]\nhalo_after_s = 60\ncritter_after_s = 60\n",
+		"critter before default halo": "[visual]\ncritter_after_s = 30\n",
+		"stale under an hour":         "[visual]\nstale_after_h = 0\n",
+		"colour name":                 "[categories.done]\ncolor = \"green\"\n",
+		"short colour":                "[categories.done]\ncolor = \"#FFF\"\n",
+		"rung zero":                   "[categories.done]\nmax_rung = 0\n",
+		"rung four":                   "[categories.done]\nmax_rung = 4\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, _, err := Load(write(t, body)); err == nil {
+				t.Fatal("want an error")
+			}
+		})
+	}
+}
