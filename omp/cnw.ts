@@ -22,6 +22,11 @@ interface Ctx {
 type Handler = (event: unknown, ctx: Ctx) => void;
 interface ExtensionAPI {
   on(event: string, handler: Handler): void;
+  registerCommand(
+    name: string,
+    command: { description: string; handler: (args: string, ctx: Ctx) => Promise<void> },
+  ): void;
+  sendMessage(message: { customType: string; content: string; display: boolean }): void;
 }
 
 function field(value: unknown, key: string): unknown {
@@ -38,6 +43,19 @@ function cnwBinary(): string | undefined {
   const exe = os === "windows" ? "cnw.exe" : "cnw";
   const path = fileURLToPath(new URL(`../bin/${os}-${arch}/${exe}`, import.meta.url));
   return existsSync(path) ? path : undefined;
+}
+
+// Runs cnw to completion and returns everything it printed: doctor reports to
+// stdout and exits 1 when a check fails, and the report matters most then.
+function capture(bin: string, args: string[], cwd?: string): Promise<string> {
+  const { promise, resolve } = Promise.withResolvers<string>();
+  let out = "";
+  const child = spawn(bin, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+  child.stdout?.on("data", (chunk) => (out += chunk));
+  child.stderr?.on("data", (chunk) => (out += chunk));
+  child.on("error", (err) => resolve(`cnw ${args.join(" ")}: ${err.message}`));
+  child.on("close", () => resolve(out.trimEnd()));
+  return promise;
 }
 
 // Final assistant message of a run: its stop reason and text.
@@ -62,6 +80,18 @@ function lastReply(event: unknown): { stopReason?: string; text: string } {
 
 export default function cnwExtension(pi: ExtensionAPI): void {
   const bin = cnwBinary();
+
+  // /cnw:doctor, the same name Claude Code gives the plugin's skills/doctor skill.
+  pi.registerCommand("cnw:doctor", {
+    description: "Check the cnw setup (config, clips, audio player, spoken names) and show recent sound events",
+    handler: async (_args, ctx) => {
+      const report = bin
+        ? await capture(bin, ["doctor"], ctx.cwd)
+        : `FAIL  cnw has no binary for ${process.platform}-${process.arch} (a clone needs ./scripts/build.sh)`;
+      pi.sendMessage({ customType: "cnw.doctor", content: "```text\n" + report + "\n```", display: true });
+    },
+  });
+
   if (!bin) return; // not built for this platform: stay silent
   const fallbackSession = `omp-${process.pid}`;
   let idleTimer: { handle: TimerHandle; ctx: Ctx } | undefined;

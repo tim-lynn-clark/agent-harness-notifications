@@ -92,12 +92,25 @@ only fast-forwards.
 
 ## Verify it works
 
-`cnw` below means the plugin's launcher: `~/.claude/plugins/cache/cnw-marketplace/cnw/<version>/bin/cnw`
-for the GitHub install (under `$CLAUDE_CONFIG_DIR` instead of `~/.claude` when that is set), or
-`./bin/cnw` in a clone.
+In a Claude Code or omp session, run the slash command:
+
+```text
+/cnw:doctor           # no FAIL lines; each category shows its clip
+```
+
+Claude Code shows the report and explains any FAIL or WARN line; omp shows the report as is.
+
+The plugin doesn't put `cnw` on your `PATH`. To run it from a terminal, `cnw` below means the
+plugin's launcher:
+
+| Install | Launcher |
+|---|---|
+| Claude Code, from GitHub | `~/.claude/plugins/cache/cnw-marketplace/cnw/<version>/bin/cnw` (under `$CLAUDE_CONFIG_DIR` instead of `~/.claude` when that is set) |
+| omp, from GitHub | `~/.omp/plugins/cache/plugins/cnw-marketplace___cnw___<version>/bin/cnw` |
+| A clone | `./bin/cnw` |
 
 ```bash
-cnw doctor            # no FAIL lines; each category shows its clip
+cnw doctor            # the same report as /cnw:doctor
 cnw play question     # hear any category's clip
 ```
 
@@ -110,7 +123,7 @@ Then in a Claude Code session in a scratch directory:
 | "Ask me red or blue using AskUserQuestion" | Don't answer | "Your agent has a question." after ~6 s |
 | "Reply with one sentence ending in a question" | Wait 60 s | "Finished, with a question for you.", then "Still waiting on you." |
 
-`cnw doctor` lists the last 20 events if something doesn't sound.
+`/cnw:doctor` lists the last 20 events if something doesn't sound.
 
 ## Default sounds
 
@@ -318,9 +331,8 @@ cnw turn-end --session ID [--cwd DIR] [--error]                         # final 
 
 ## Troubleshooting
 
-```bash
-cnw doctor
-```
+Run `/cnw:doctor` in a Claude Code or omp session, or `cnw doctor` in a terminal (see
+[Verify it works](#verify-it-works) for the launcher's path).
 
 `doctor` reports the Claude Code version, config path and validation errors, the bundled voice, each
 category's sound (marked `bundled` for a default clip; a missing default clip fails with a hint to run
