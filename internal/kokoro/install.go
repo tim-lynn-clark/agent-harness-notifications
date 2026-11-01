@@ -16,6 +16,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/gofrs/flock"
 )
 
 // installID is the marker file's content: an install made for other pinned
@@ -23,6 +25,9 @@ import (
 const installID = "sherpa-onnx " + EngineVersion + ", " + ModelName + "\n"
 
 const markerName = "installed"
+
+// stagePrefix names the staging directories an install builds in, next to dir.
+const stagePrefix = ".kokoro-install-"
 
 // Dir is the install directory under the state directory.
 func Dir(stateDir string) string { return filepath.Join(stateDir, "kokoro") }
@@ -47,10 +52,20 @@ func Install(dir, from string, out io.Writer) error {
 
 func install(dir, from string, assets []Asset, out io.Writer) error {
 	parent := filepath.Dir(dir)
-	if err := os.MkdirAll(parent, 0o700); err != nil {
+	unlock, err := lockAndSweep(parent)
+	if err != nil {
 		return err
 	}
-	stage, err := os.MkdirTemp(parent, ".kokoro-install-")
+	defer unlock()
+	if from == "" {
+		var total int64
+		for _, a := range assets {
+			total += a.Size
+		}
+		fmt.Fprintf(out, "Downloading the sherpa-onnx %s engine and the %s model (%d MB) into %s\n",
+			EngineVersion, ModelName, total/1_000_000, dir)
+	}
+	stage, err := os.MkdirTemp(parent, stagePrefix)
 	if err != nil {
 		return err
 	}
@@ -92,8 +107,41 @@ func install(dir, from string, assets []Asset, out io.Writer) error {
 	return nil
 }
 
-// Remove deletes the install in dir.
-func Remove(dir string) error { return os.RemoveAll(dir) }
+// Remove deletes the install in dir, and any staging directory a killed install left.
+func Remove(dir string) error {
+	unlock, err := lockAndSweep(filepath.Dir(dir))
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return os.RemoveAll(dir)
+}
+
+// ErrInstallRunning is returned while another install holds the lock.
+var ErrInstallRunning = errors.New("another Kokoro install is running; wait for it to finish")
+
+// lockAndSweep takes the install lock in parent and deletes leftover staging
+// directories. The OS releases the lock when its holder dies, so a staging directory
+// found while holding it belongs to an install that was killed (a timeout or Ctrl-C
+// skips its deferred cleanup) and can be up to the size of both archives.
+func lockAndSweep(parent string) (unlock func(), err error) {
+	if err := os.MkdirAll(parent, 0o700); err != nil {
+		return nil, err
+	}
+	lock := flock.New(filepath.Join(parent, ".kokoro-install.lock"))
+	locked, err := lock.TryLock()
+	if err != nil {
+		return nil, err
+	}
+	if !locked {
+		return nil, ErrInstallRunning
+	}
+	stale, _ := filepath.Glob(filepath.Join(parent, stagePrefix+"*"))
+	for _, s := range stale {
+		os.RemoveAll(s)
+	}
+	return func() { lock.Unlock() }, nil
+}
 
 func download(a Asset, dest string, out io.Writer) error {
 	req, err := http.NewRequest(http.MethodGet, a.URL, nil)

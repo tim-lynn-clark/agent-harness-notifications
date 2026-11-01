@@ -312,9 +312,12 @@ omp plugin marketplace add tim-lynn-clark/agent-harness-notifications
 omp plugin install cnw@cnw-marketplace
 ```
 
-Start new omp sessions to load it. omp installs a **copy** of the plugin, binaries and clips
-included, so after a new release reinstall it:
-`omp plugin marketplace update cnw-marketplace && omp plugin uninstall cnw@cnw-marketplace && omp plugin install cnw@cnw-marketplace`.
+Start new omp sessions to load it: omp loads the extension, and with it the `/cnw:*` commands, only
+when a session starts (`/reload-plugins` isn't enough). omp installs a **copy** of the plugin,
+binaries and clips included, so after a new release upgrade it, then start new sessions:
+`omp plugin marketplace update cnw-marketplace && omp plugin upgrade cnw@cnw-marketplace`.
+Naming the plugin makes `upgrade` reinstall it in one step; uninstalling and installing separately
+leaves omp without cnw if the install step doesn't run.
 To run your own build, add the marketplace from a built clone (`omp plugin marketplace add "$PWD"`),
 install `cnw-dev@cnw-marketplace`, and reinstall it after each `./scripts/build.sh`.
 Uninstall with `omp plugin marketplace remove cnw-marketplace`.

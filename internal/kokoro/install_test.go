@@ -61,9 +61,55 @@ func TestInstallFromDirectory(t *testing.T) {
 			t.Errorf("executable lost its mode: %v", fi.Mode())
 		}
 	}
-	if entries, _ := os.ReadDir(parent); len(entries) != 1 {
-		t.Errorf("staging left behind: %v", entries)
+	if stages, _ := filepath.Glob(filepath.Join(parent, stagePrefix+"*")); len(stages) != 0 {
+		t.Errorf("staging left behind: %v", stages)
 	}
+}
+
+// A killed install skips its deferred cleanup; the next install or remove deletes
+// what it left.
+func TestInstallAndRemoveSweepKilledInstallStaging(t *testing.T) {
+	for name, run := range map[string]func(dir string) error{
+		"install": func(dir string) error { return install(dir, "testdata", fixtures(t), io.Discard) },
+		"remove":  Remove,
+	} {
+		t.Run(name, func(t *testing.T) {
+			parent := t.TempDir()
+			killed := filepath.Join(parent, stagePrefix+"123")
+			os.MkdirAll(killed, 0o700)
+			os.WriteFile(filepath.Join(killed, "fake-model.tar.bz2"), []byte("partial"), 0o600)
+			if err := run(filepath.Join(parent, "kokoro")); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Stat(killed); !os.IsNotExist(err) {
+				t.Fatalf("killed install's staging survived: %v", err)
+			}
+		})
+	}
+}
+
+// Sweeping must never delete the staging of an install that is still running.
+func TestInstallRefusesWhileAnotherRuns(t *testing.T) {
+	parent := t.TempDir()
+	dir := filepath.Join(parent, "kokoro")
+	unlock, err := lockAndSweep(parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	running := filepath.Join(parent, stagePrefix+"running")
+	os.MkdirAll(running, 0o700)
+	for name, err := range map[string]error{
+		"install": install(dir, "testdata", fixtures(t), io.Discard),
+		"remove":  Remove(dir),
+	} {
+		if err == nil || !strings.Contains(err.Error(), "another Kokoro install") {
+			t.Errorf("%s: err = %v, want a running-install error", name, err)
+		}
+	}
+	if _, err := os.Stat(running); err != nil {
+		t.Fatalf("running install's staging was deleted: %v", err)
+	}
+	unlock()
 }
 
 func TestInstallReplacesPreviousInstall(t *testing.T) {

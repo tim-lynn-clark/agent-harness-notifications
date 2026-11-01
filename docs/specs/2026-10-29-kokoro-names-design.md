@@ -49,6 +49,11 @@ Names use the config's `kokoro_voice`, the same key that picks the bundled clips
 ## 6. Install: `cnw kokoro install [--from DIR]`
 
 1. Reads the config's `kokoro_voice` and fails if the config doesn't load.
+   Then takes an exclusive lock, `.kokoro-install.lock` next to the target, for the rest of the
+   install, failing if another install holds it. Holding it, it deletes any `.kokoro-install-*`
+   staging directory: the OS drops the lock when its holder dies, so those were left by an install
+   that was killed (a Claude Code Bash timeout or Ctrl-C skips the cleanup) and can hold the
+   partly downloaded archives.
 2. Downloads the engine archive for this platform and the model archive (about 376 MB in total), or
    with `--from DIR` reads the same file names from `DIR`. That's the route for networks that block
    downloads by programs but allow a browser.
@@ -70,7 +75,8 @@ On failure, the command prints both download URLs and the `--from` instructions.
 Installed size: 197 MiB on macOS arm64. The model is 109 MiB, `voices.bin` 27 MiB, the lexicons
 12 MiB, espeak-ng data 19 MiB, and the engine and runtime about 27 MiB.
 
-`cnw kokoro remove` deletes `<state dir>/kokoro`. An install whose marker names other versions
+`cnw kokoro remove` takes the same lock, deletes leftover staging directories, and deletes
+`<state dir>/kokoro`. An install whose marker names other versions
 counts as not installed, so a `cnw` upgrade that changes the pins asks for a reinstall (doctor
 shows the `say` or chime state).
 
@@ -128,6 +134,7 @@ Unit tests (`internal/kokoro`, `internal/wav`):
 | Asserts |
 |---|
 | Install from a directory extracts wanted files only, keeps the executable bit, and leaves no staging behind. |
+| Install and remove delete a killed install's staging; while another install holds the lock they fail and leave its staging alone. |
 | Install replaces a previous install; a checksum mismatch fails and keeps the previous install. |
 | A marker for other versions counts as not installed. |
 | Extraction rejects paths that would leave the install, and fails when a listed file is missing. |

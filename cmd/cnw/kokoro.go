@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -88,15 +89,11 @@ func kokoroInstall(stateDir, dir, from string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	if from == "" {
-		var total int64
-		for _, a := range assets {
-			total += a.Size
-		}
-		fmt.Printf("Downloading the sherpa-onnx %s engine and the %s model (%d MB) into %s\n",
-			kokoro.EngineVersion, kokoro.ModelName, total/1_000_000, dir)
-	}
 	if err := kokoro.Install(dir, from, os.Stdout); err != nil {
+		if errors.Is(err, kokoro.ErrInstallRunning) {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
 		fmt.Fprintf(os.Stderr, "install failed: %v\n\n", err)
 		fmt.Fprintln(os.Stderr, "If downloads are blocked, fetch these files with a browser into one folder:")
 		for _, a := range assets {

@@ -57,13 +57,14 @@ function cnwBinary(): string | undefined {
 }
 
 // Runs cnw to completion and returns everything it printed. Commands report failures
-// on stderr and exit non-zero, and the output matters most then.
+// on stderr and exit non-zero, and the output matters most then. Streams decode as
+// UTF-8 so a character split across two chunks stays whole.
 function capture(bin: string, args: string[], cwd?: string): Promise<string> {
   const { promise, resolve } = Promise.withResolvers<string>();
   let out = "";
   const child = spawn(bin, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
-  child.stdout?.on("data", (chunk) => (out += chunk));
-  child.stderr?.on("data", (chunk) => (out += chunk));
+  child.stdout?.setEncoding("utf8").on("data", (chunk: string) => (out += chunk));
+  child.stderr?.setEncoding("utf8").on("data", (chunk: string) => (out += chunk));
   child.on("error", (err) => resolve(`cnw ${args.join(" ")}: ${err.message}`));
   child.on("close", () => resolve(out.trimEnd()));
   return promise;
@@ -112,8 +113,9 @@ export default function cnwExtension(pi: ExtensionAPI): void {
           pi.sendMessage({ customType: "cnw.command", content: `${shown}\n\n${missing}`, display: true });
           return;
         }
-        if (name === "kokoro" && args[1] === "install") {
-          const notice = `${shown}: installing Kokoro (a download is ~376 MB); this can take a few minutes.`;
+        // --from reads local archives, so only a plain install can download.
+        if (name === "kokoro" && args[1] === "install" && !args.some((a) => /^--?from(=|$)/.test(a))) {
+          const notice = `${shown}: unless Kokoro is already installed, this downloads ~376 MB and can take a few minutes.`;
           pi.sendMessage({ customType: "cnw.command", content: notice, display: true });
         }
         const out = (await capture(bin, args, ctx.cwd)) || "(done, no output)";
