@@ -62,7 +62,7 @@ func runNotify(args []string) int {
 			return 1
 		}
 	}
-	schedule(&rec, *session, *cwd, seq, id, time.Duration(*afterMS)*time.Millisecond)
+	schedule(&rec, *session, *cwd, seq, id, time.Duration(*afterMS)*time.Millisecond, now)
 	return 0
 }
 
@@ -133,6 +133,6 @@ func runTurnEnd(args []string, stdin io.Reader) int {
 		rec.Outcome = "state: " + err.Error()
 		return 1
 	}
-	schedule(&rec, *session, *cwd, 0, id, 0)
+	schedule(&rec, *session, *cwd, 0, id, 0, now)
 	return 0
 }

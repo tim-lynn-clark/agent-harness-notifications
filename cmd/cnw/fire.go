@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"os"
 	"os/exec"
@@ -12,6 +13,7 @@ import (
 	"github.com/tim-lynn-clark/agent-harness-notifications/internal/audio"
 	"github.com/tim-lynn-clark/agent-harness-notifications/internal/category"
 	"github.com/tim-lynn-clark/agent-harness-notifications/internal/config"
+	"github.com/tim-lynn-clark/agent-harness-notifications/internal/jump"
 	"github.com/tim-lynn-clark/agent-harness-notifications/internal/kokoro"
 	"github.com/tim-lynn-clark/agent-harness-notifications/internal/label"
 	"github.com/tim-lynn-clark/agent-harness-notifications/internal/state"
@@ -50,6 +52,8 @@ func runFire(args []string) {
 	cat := fs.String("category", "", "")
 	delayMS := fs.Int64("delay", 0, "")
 	cwd := fs.String("cwd", "", "")
+	atMS := fs.Int64("at", 0, "")
+	jumpJSON := fs.String("jump", "", "")
 	if err := fs.Parse(args); err != nil {
 		return
 	}
@@ -73,9 +77,12 @@ func runFire(args []string) {
 	c := cfg.For(category.ID(*cat))
 	files := []string{c.Sound}
 	var note string
-	if cfg.Announce != announce.ModeOff && *cwd != "" {
-		l := label.For(*cwd, label.ExecGit).Aliased(cfg.Names)
+	var l label.Label
+	if *cwd != "" {
+		l = label.For(*cwd, label.ExecGit).Aliased(cfg.Names)
 		rec.Label = l.String()
+	}
+	if cfg.Announce != announce.ModeOff && *cwd != "" {
 		sp, voice := speechFor(cfg, st.Dir)
 		files, note = announce.Sequence(cfg.Announce, voice, st.Dir, c.Sound, l, sp)
 	}
@@ -91,7 +98,12 @@ func runFire(args []string) {
 	}
 	defer release()
 
-	outcome, err := app.Claim(st, *session, *seq, time.Now(), cfg.Cooldown, state.Attention{})
+	var target jump.Target
+	if *jumpJSON != "" {
+		_ = json.Unmarshal([]byte(*jumpJSON), &target)
+	}
+	att := state.Attention{Category: *cat, SinceMS: *atMS, Label: l.String(), Cwd: *cwd, Jump: target}
+	outcome, err := app.Claim(st, *session, *seq, time.Now(), cfg.Cooldown, att)
 	if err != nil {
 		rec.Outcome = "state: " + err.Error()
 		return

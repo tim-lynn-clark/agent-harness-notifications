@@ -14,7 +14,9 @@ const sessionMaxAge = 7 * 24 * time.Hour
 
 func openStore() (state.Store, error) {
 	dir, err := state.DefaultDir()
-	return state.Store{Dir: dir}, err
+	st := state.Store{Dir: dir}
+	st.OnAttention = func() { refreshVisual(st) }
+	return st, err
 }
 
 // runHook handles one event. It writes nothing to stdout and never fails, so
@@ -58,5 +60,5 @@ func runHook(stdin io.Reader) {
 		return
 	}
 
-	schedule(&rec, e.SessionID, e.Cwd, seq, res.Category, 0)
+	schedule(&rec, e.SessionID, e.Cwd, seq, res.Category, 0, now)
 }
