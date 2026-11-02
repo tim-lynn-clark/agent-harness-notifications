@@ -132,7 +132,7 @@ jobs:
           for _ in $(seq 40); do [ -f "$beat" ] && break; kill -0 "$host" || break; sleep 0.5; done
           [ -f "$beat" ] || fail "no heartbeat within 20 s"
           first=$(cat "$beat")
-          ./bin/cnw visual preview permission
+          ./bin/cnw visual preview permission || fail "preview failed"
           # The critter starts 6 s into the preview; the heartbeat is rewritten every 5 s.
           sleep 8
           kill -0 "$host" || fail "the visual host exited"
