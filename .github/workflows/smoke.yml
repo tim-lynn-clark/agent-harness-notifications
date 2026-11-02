@@ -120,8 +120,10 @@ jobs:
           go-version-file: go.mod
       - run: go test ./...
       - run: ./scripts/build.sh
-      - name: Compile the visual host script
-        run: osacompile -l JavaScript -o "$RUNNER_TEMP/host.scpt" internal/visual/host.js
+      - name: Compile the visual host script (host.js joined with critters.js)
+        run: |
+          go run ./scripts/hostscript > "$RUNNER_TEMP/host.js"
+          osacompile -l JavaScript -o "$RUNNER_TEMP/host.scpt" "$RUNNER_TEMP/host.js"
       - name: Run the visual host against a preview
         run: |
           export CNW_STATE_DIR="$RUNNER_TEMP/state" CNW_CONFIG="$RUNNER_TEMP/none.toml"

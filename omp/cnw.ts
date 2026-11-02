@@ -20,7 +20,7 @@ const USER_COMMANDS = [
   { name: "init", description: "Write the default cnw config file if none exists" },
   { name: "voices", description: "List the bundled voices, or hear one: /cnw:voices [play ID [CATEGORY]]" },
   { name: "kokoro", description: "Spoken names in the clips' voice: /cnw:kokoro install [--from DIR] | urls | remove" },
-  { name: "visual", description: "On-screen signal and menu bar orb for waiting sessions (macOS): /cnw:visual install | uninstall | preview [CATEGORY]" },
+  { name: "visual", description: "On-screen signal and menu bar orb for waiting sessions (macOS): /cnw:visual install | uninstall | critters | preview [CATEGORY] [--critter ID]" },
 ];
 
 type TimerHandle = unknown;

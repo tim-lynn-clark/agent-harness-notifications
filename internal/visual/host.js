@@ -18,7 +18,7 @@ const SHARING_NONE = 0; // NSWindowSharingNone
 
 let DIR = '';
 let CNW = '';
-let waiting = []; // {id, category, label, color, maxRung, since, halo, critter}, oldest first
+let waiting = []; // {id, category, label, color, maxRung, since, halo, critter, look}, oldest first
 let overlays = []; // {frame:{x,y,w,h,scale}, window, root, aurora}
 let screensKey = '';
 let auroraKey = null;
@@ -139,13 +139,14 @@ function currentWaiting(now) {
     for (const w of snap.waiting || []) {
       if (now - w.since_ms > snap.stale_after_ms) continue;
       out.push({ id: w.session_id, category: w.category, label: w.label || 'session', color: w.color,
-        maxRung: w.max_rung, since: w.since_ms, halo: snap.halo_after_ms, critter: snap.critter_after_ms });
+        maxRung: w.max_rung, since: w.since_ms, halo: snap.halo_after_ms, critter: snap.critter_after_ms,
+        look: snap.critter });
     }
   }
   const p = readJSON(DIR + '/visual-preview.json');
   if (p && now - p.started_ms < PREVIEW.end) {
     out.push({ id: '', category: p.category, label: p.label || 'preview', color: p.color,
-      maxRung: p.max_rung, since: p.started_ms, halo: PREVIEW.halo, critter: PREVIEW.critter });
+      maxRung: p.max_rung, since: p.started_ms, halo: PREVIEW.halo, critter: PREVIEW.critter, look: p.critter });
   }
   out.sort((a, b) => a.since - b.since);
   return out;
@@ -369,53 +370,21 @@ function dropHalo() {
 }
 
 // ---- rung 3: critter ----------------------------------------------------------
+// The critters themselves are in critters.js, appended to this script.
 
-const GLYPH = {
-  question: '?', done_question: '?', plan_approval: '✎', permission: '!', mcp_input: '⇄',
-  done: '✓', done_background: '✓', error: '✕', usage_limit: '⏳', idle_reminder: '…',
-};
-let critter = null; // {key, overlay, box, body, feet, sign}
+let critter = null; // see critterBuild, plus key
 let critterGone = 0; // when the leaving critter is off screen, ms
-
-// part adds a rounded rectangle to parent with its bottom centre at (x, y); color is a CGColor.
-function part(parent, x, y, w, h, radius, color) {
-  const l = $.CALayer.layer;
-  l.setAnchorPoint($.NSMakePoint(0.5, 0));
-  l.setBounds($.NSMakeRect(0, 0, w, h));
-  l.setPosition($.NSMakePoint(x, y));
-  l.setCornerRadius(radius);
-  l.setBackgroundColor(color);
-  parent.addSublayer(l);
-  return l;
-}
-
-function blink(eye) {
-  const a = $.CAKeyframeAnimation.animationWithKeyPath($('transform.scale.y'));
-  a.setValues($([num(1), num(1), num(0.1), num(1)]));
-  a.setKeyTimes($([num(0), num(0.92), num(0.96), num(1)]));
-  a.setDuration(4);
-  a.setRepeatCount(1e9);
-  eye.addAnimationForKey(a, $('blink'));
-}
-
-function moveTo(l, fromX, toX, dur) {
-  const a = $.CABasicAnimation.animationWithKeyPath($('position.x'));
-  a.setFromValue(num(fromX));
-  a.setToValue(num(toX));
-  a.setDuration(dur);
-  noAnim(() => l.setPosition($.NSMakePoint(toX, 0)));
-  l.addAnimationForKey(a, $('walk'));
-}
-
-function walk(c, fromX, toX, dur) {
-  moveTo(c.box, fromX, toX, dur);
-  loop(c.body, 'transform.scale.y', 1, 0.9, 0.18, 'squash', dur);
-  loop(c.feet[0], 'position.y', 0, 6, 0.18, 'step', dur);
-  loop(c.feet[1], 'position.y', 6, 0, 0.18, 'step', dur);
-}
 
 function critterKey(e) {
   return e.id + '|' + e.category + '|' + e.since;
+}
+
+// critterId resolves the configured look; random (or anything unknown) picks
+// one per appearance.
+function critterId(look) {
+  if (CRITTERS[look]) return look;
+  const ids = Object.keys(CRITTERS);
+  return ids[Math.floor(Math.random() * ids.length)];
 }
 
 function renderCritter(now) {
@@ -428,58 +397,16 @@ function critterEnter(e) {
   const p = pointerOverlay();
   const o = p ? p.o : overlays[0];
   if (!o) return;
-  const reduce = reduceMotion();
-  const W = o.frame.w;
-  const box = $.CALayer.layer;
-  box.setAnchorPoint($.NSMakePoint(0.5, 0));
-  box.setBounds($.NSMakeRect(0, 0, 120, 160));
-  const dark = cgColor('#262626', 1);
-  const feet = [part(box, 46, 0, 18, 8, 4, dark), part(box, 74, 0, 18, 8, 4, dark)];
-  const body = part(box, 60, 6, 64, 56, 28, cgColor(e.color, 1));
-  for (const x of [20, 44]) {
-    const eye = part(body, x, 26, 14, 16, 7, cgColor('#FFFFFF', 1));
-    part(eye, 7, 3, 6, 7, 3, cgColor('#000000', 1));
-    if (!reduce) blink(eye);
-  }
-  const sign = $.CALayer.layer;
-  sign.setAnchorPoint($.NSMakePoint(0.5, 0));
-  sign.setBounds($.NSMakeRect(0, 0, 4, 100));
-  sign.setPosition($.NSMakePoint(100, 30));
-  part(sign, 2, 0, 4, 70, 2, cgColor('#734D26', 1));
-  const board = textLayer((GLYPH[e.category] || '!') + '  ' + e.label, 13, cgColor('#000000', 1), cgColor('#FFFFFF', 1));
-  board.setBorderWidth(2);
-  board.setBorderColor(cgColor(e.color, 1));
-  board.setAnchorPoint($.NSMakePoint(0.5, 0));
-  board.setPosition($.NSMakePoint(2, 66));
-  sign.addSublayer(board);
-  box.addSublayer(sign);
-  o.root.addSublayer(box);
-  critter = { key: critterKey(e), overlay: o, box: box, body: body, feet: feet, sign: sign };
-  const stopX = W - 220;
-  if (reduce) {
-    noAnim(() => box.setPosition($.NSMakePoint(stopX, 0)));
-    fadeIn(box);
-  } else {
-    walk(critter, W + 80, stopX, 3);
-    after(3, () => loop(sign, 'transform.rotation.z', -0.05, 0.05, 1.6, 'sway'));
-  }
+  critter = critterBuild(critterId(e.look), e, o);
+  critter.key = critterKey(e);
+  critterArrive(critter, p ? p.x : o.frame.w / 2, reduceMotion());
 }
 
 // critterLeave sends the critter off and returns how long that takes, ms.
 function critterLeave() {
   const c = critter;
   critter = null;
-  if (reduceMotion()) {
-    fadeOut(c.box);
-    return 350;
-  }
-  c.sign.removeAnimationForKey($('sway'));
-  loop(c.sign, 'transform.rotation.z', -0.35, 0.35, 0.2, 'wave', 1.2);
-  after(1.2, () => {
-    walk(c, c.box.position.x, c.overlay.frame.w + 120, 2.5);
-    after(2.6, () => c.box.removeFromSuperlayer);
-  });
-  return 3800;
+  return critterDepart(c, reduceMotion());
 }
 
 // ---- orb ----------------------------------------------------------------------

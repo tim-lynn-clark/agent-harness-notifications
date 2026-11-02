@@ -15,6 +15,28 @@ import (
 //go:embed host.js
 var hostJS []byte
 
+//go:embed critters.js
+var crittersJS []byte
+
+// Script returns the host script osascript runs: host.js, then critters.js,
+// joined into one file (host.js defines run; critters.js only adds builders).
+func Script() []byte {
+	return join(hostJS, crittersJS)
+}
+
+func join(host, critters []byte) []byte {
+	out := make([]byte, 0, len(host)+1+len(critters))
+	out = append(out, host...)
+	out = append(out, '\n')
+	return append(out, critters...)
+}
+
+// scriptName names a host script by its content hash.
+func scriptName(script []byte) string {
+	sum := sha256.Sum256(script)
+	return "visual-host-" + hex.EncodeToString(sum[:6]) + ".js"
+}
+
 // Files the host reads or writes in the state directory.
 const (
 	PreviewFile   = "visual-preview.json"
@@ -22,12 +44,11 @@ const (
 	LogFile       = "visual-host.log"
 )
 
-// HostScript writes the embedded host script into dir, named by its content
-// hash so an upgraded binary never runs a stale copy, removes older copies,
-// and returns its path.
+// HostScript writes Script into dir, named by its content hash so an upgraded
+// binary never runs a stale copy, removes older copies, and returns its path.
 func HostScript(dir string) (string, error) {
-	sum := sha256.Sum256(hostJS)
-	name := "visual-host-" + hex.EncodeToString(sum[:6]) + ".js"
+	script := Script()
+	name := scriptName(script)
 	path := filepath.Join(dir, name)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
@@ -42,7 +63,7 @@ func HostScript(dir string) (string, error) {
 	if _, err := os.Stat(path); err == nil {
 		return path, nil
 	}
-	return path, state.WriteFileAtomic(path, hostJS)
+	return path, state.WriteFileAtomic(path, script)
 }
 
 // Preview is a short-lived pretend session that runs the whole ladder in 12 s.
@@ -51,6 +72,7 @@ type Preview struct {
 	Label     string `json:"label"`
 	Color     string `json:"color"`
 	MaxRung   int    `json:"max_rung"`
+	Critter   string `json:"critter"` // a config.Critters id; "random" picks one
 	StartedMS int64  `json:"started_ms"`
 }
 

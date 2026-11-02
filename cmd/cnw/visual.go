@@ -3,11 +3,13 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/tim-lynn-clark/agent-harness-notifications/internal/category"
@@ -39,8 +41,10 @@ func refreshVisual(st state.Store) {
 const visualUsage = `usage:
   cnw visual install       show waiting sessions on screen and in the menu bar (macOS)
   cnw visual uninstall     remove it
-  cnw visual preview [CATEGORY]
-                           run the whole escalation in 12 s (default: permission)
+  cnw visual critters      list the desk critters; * marks the configured one
+  cnw visual preview [CATEGORY] [--critter ID]
+                           run the whole escalation in 12 s (default: permission,
+                           the configured critter)
 `
 
 func runVisual(args []string) int {
@@ -53,6 +57,8 @@ func runVisual(args []string) int {
 		return 1
 	}
 	switch args[0] {
+	case "critters":
+		return runVisualCritters()
 	case "host":
 		return runVisualHost()
 	case "jump":
@@ -117,13 +123,42 @@ func runVisualJump(args []string) int {
 	return 0
 }
 
-func runVisualPreview(args []string) int {
-	id := category.Permission
-	if len(args) > 0 {
-		id = category.ID(args[0])
+// parsePreviewArgs reads `[CATEGORY] [--critter ID]` in either order; critter
+// is "" when not given.
+func parsePreviewArgs(args []string) (id category.ID, critter string, err error) {
+	id = category.Permission
+	seenCategory := false
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--critter":
+			if i+1 >= len(args) {
+				return "", "", errors.New("--critter needs an id (list: cnw visual critters)")
+			}
+			i++
+			critter = args[i]
+		case strings.HasPrefix(a, "--critter="):
+			critter = strings.TrimPrefix(a, "--critter=")
+		case strings.HasPrefix(a, "-") || seenCategory:
+			return "", "", fmt.Errorf("unexpected argument %q", a)
+		default:
+			id, seenCategory = category.ID(a), true
+		}
 	}
 	if _, ok := category.DefaultFor(id); !ok {
-		fmt.Fprintf(os.Stderr, "unknown category %q\n", id)
+		return "", "", fmt.Errorf("unknown category %q", id)
+	}
+	if critter != "" && !config.ValidCritter(critter) {
+		return "", "", fmt.Errorf("unknown critter %q, not one of: %s", critter, strings.Join(config.CritterIDs(), ", "))
+	}
+	return id, critter, nil
+}
+
+func runVisualPreview(args []string) int {
+	id, critter, err := parsePreviewArgs(args)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprint(os.Stderr, visualUsage)
 		return 2
 	}
 	cfg, _, err := loadConfig()
@@ -136,11 +171,14 @@ func runVisualPreview(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
+	if critter == "" {
+		critter = cfg.Critter
+	}
 	cwd, _ := os.Getwd()
 	c := cfg.For(id)
 	p := visual.Preview{
 		Category: string(id), Label: label.For(cwd, label.ExecGit).Aliased(cfg.Names).String(),
-		Color: c.Color, MaxRung: c.MaxRung, StartedMS: time.Now().UnixMilli(),
+		Color: c.Color, MaxRung: c.MaxRung, Critter: critter, StartedMS: time.Now().UnixMilli(),
 	}
 	if err := visual.WritePreview(st.Dir, p); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -150,8 +188,37 @@ func runVisualPreview(args []string) int {
 		fmt.Fprintln(os.Stderr, "the visual host isn't running: run `cnw visual install` first")
 		return 1
 	}
-	fmt.Printf("previewing %s for 12 s: glow, halo at 3 s, critter at 6 s (highest rung %d)\n", id, c.MaxRung)
+	fmt.Printf("previewing %s for 12 s: glow, halo at 3 s, critter (%s) at 6 s (highest rung %d)\n", id, critter, c.MaxRung)
 	return 0
+}
+
+// runVisualCritters lists the critters (spec §8). A config that fails to load
+// still lists them, with none marked.
+func runVisualCritters() int {
+	cfg, _, err := loadConfig()
+	current := ""
+	if err == nil {
+		current = cfg.Critter
+	}
+	writeCritters(os.Stdout, current)
+	if err != nil {
+		fmt.Printf("config: %v\n", err)
+	} else {
+		fmt.Printf("Current: %s (critter under [visual] in %s).\n", current, config.Path())
+	}
+	fmt.Println("Preview: cnw visual preview [CATEGORY] --critter ID")
+	return 0
+}
+
+// writeCritters prints one line per critter, with "*" marking current.
+func writeCritters(w io.Writer, current string) {
+	for _, c := range config.Critters {
+		mark := " "
+		if c.ID == current {
+			mark = "*"
+		}
+		fmt.Fprintf(w, "%s %-8s %s\n", mark, c.ID, c.Description)
+	}
 }
 
 func runVisualInstall() int {
