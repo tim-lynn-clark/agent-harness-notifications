@@ -69,6 +69,8 @@ func Build(atts []state.Attention, cfg *config.Config, now time.Time) Snapshot {
 
 // Write rebuilds the snapshot from every session. Reading and writing happen
 // under one lock, so the last writer always reflects the latest sessions.
+// It runs as Store.OnAttention, with a session lock held, so it must never take
+// a session lock itself; it takes only visual.lock and reads sessions unlocked.
 func Write(st state.Store, cfg *config.Config, now time.Time) error {
 	if err := os.MkdirAll(st.Dir, 0o700); err != nil {
 		return err

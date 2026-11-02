@@ -24,8 +24,9 @@ import (
 const playLockWait = 15 * time.Second
 
 // spawnFire starts `cnw fire ARGS…` detached from the hook process, with no
-// stdio, so Claude Code does not wait for it.
-func spawnFire(args []string) error {
+// stdio, so Claude Code does not wait for it. A variable so tests can see
+// the arguments schedule passes.
+var spawnFire = func(args []string) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err

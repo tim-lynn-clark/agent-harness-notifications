@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tim-lynn-clark/agent-harness-notifications/internal/category"
 	"github.com/tim-lynn-clark/agent-harness-notifications/internal/config"
 	"github.com/tim-lynn-clark/agent-harness-notifications/internal/state"
 )
@@ -74,5 +75,20 @@ func TestWriteReflectsClearedSessions(t *testing.T) {
 	set(nil)
 	if got := read(); got.Waiting == nil || len(got.Waiting) != 0 {
 		t.Fatalf("after clear want an empty list, got %+v", got.Waiting)
+	}
+}
+
+func TestBuildWithDefaults(t *testing.T) {
+	snap := Build([]state.Attention{{SessionID: "s", Category: "usage_limit", SinceMS: t0.UnixMilli(), Label: "notifier"}},
+		config.Default(), t0)
+	if snap.HaloAfterMS != 60000 || snap.CritterAfterMS != 240000 {
+		t.Fatalf("thresholds: halo %d critter %d", snap.HaloAfterMS, snap.CritterAfterMS)
+	}
+	d, _ := category.DefaultFor(category.UsageLimit)
+	if len(snap.Waiting) != 1 {
+		t.Fatalf("waiting: %+v", snap.Waiting)
+	}
+	if w := snap.Waiting[0]; w.Label != "notifier" || w.Color != d.Color || w.MaxRung != d.MaxRung || d.Color == "" || d.MaxRung == 0 {
+		t.Fatalf("entry %+v, want label notifier, %s, rung %d", w, d.Color, d.MaxRung)
 	}
 }

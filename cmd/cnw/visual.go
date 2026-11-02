@@ -20,12 +20,18 @@ import (
 // sounds, it never fails the caller. It always rewrites, with built-in
 // defaults when the config can't be loaded, so a cleared session never lingers
 // in the snapshot. It reads the config directly: the snapshot needs no sounds.
+// A failed write is logged to events.log.
 func refreshVisual(st state.Store) {
 	cfg, _, err := config.Load(config.Path())
 	if err != nil {
 		cfg = config.Default()
 	}
-	_ = visual.Write(st, cfg, time.Now())
+	now := time.Now()
+	if err := visual.Write(st, cfg, now); err != nil {
+		rec := newRecord(now)
+		rec.Event, rec.Outcome = "visual", "error: "+err.Error()
+		_ = st.Log(rec)
+	}
 }
 
 const visualUsage = `usage:

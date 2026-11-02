@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -131,7 +132,7 @@ func TestSignalUsageErrors(t *testing.T) {
 }
 
 func TestResolveClearsSnapshotWithInvalidConfig(t *testing.T) {
-	st := signalEnv(t)
+	signalEnv(t)
 	if err := os.WriteFile(os.Getenv("CNW_CONFIG"), []byte("[visual]\nhalo_after_s = 300\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -151,5 +152,46 @@ func TestResolveClearsSnapshotWithInvalidConfig(t *testing.T) {
 	}
 	if !strings.Contains(string(data), `"waiting":[]`) {
 		t.Fatalf("snapshot still lists the session: %s", data)
+	}
+}
+
+func TestScheduleRecordsTheEventTimeAndTerminal(t *testing.T) {
+	signalEnv(t)
+	if err := os.WriteFile(os.Getenv("CNW_CONFIG"), []byte("[categories.done]\nsound = \"/x.wav\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	orig := spawnFire
+	spawnFire = func(args []string) error { got = args; return nil }
+	t.Cleanup(func() { spawnFire = orig })
+
+	at := time.UnixMilli(1234567)
+	var rec state.Record
+	schedule(&rec, "s", "/proj", 0, category.Done, 0, at)
+	if rec.Outcome != "scheduled" {
+		t.Fatalf("outcome %q", rec.Outcome)
+	}
+	flags := map[string]string{}
+	for i := 0; i+1 < len(got); i += 2 {
+		flags[got[i]] = got[i+1]
+	}
+	if flags["--at"] != "1234567" {
+		t.Fatalf("--at in %v", got)
+	}
+	if _, ok := flags["--jump"]; ok != (runtime.GOOS == "darwin") {
+		t.Fatalf("--jump present = %v on %s: %v", ok, runtime.GOOS, got)
+	}
+}
+
+func TestRefreshVisualLogsAFailedWrite(t *testing.T) {
+	st := signalEnv(t)
+	// A directory where the snapshot goes makes the write fail.
+	if err := os.MkdirAll(filepath.Join(st.Dir, visual.SnapshotFile, "x"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	refreshVisual(st)
+	recs := readLog(t, st.Dir)
+	if len(recs) != 1 || recs[0].Event != "visual" || !strings.HasPrefix(recs[0].Outcome, "error: ") {
+		t.Fatalf("log %+v", recs)
 	}
 }
