@@ -100,7 +100,11 @@ func runVisualJump(args []string) int {
 		return 1
 	}
 	s, err := st.Load(args[0])
-	if err != nil || s.Attention == nil {
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "cnw visual jump:", err)
+		return 1
+	}
+	if s.Attention == nil {
 		fmt.Fprintln(os.Stderr, "cnw visual jump: session is not waiting")
 		return 1
 	}
@@ -141,7 +145,7 @@ func runVisualPreview(args []string) int {
 		return 1
 	}
 	if !visual.HostAlive(st.Dir, time.Now()) {
-		fmt.Println("the visual host isn't running: run `cnw visual install` first")
+		fmt.Fprintln(os.Stderr, "the visual host isn't running: run `cnw visual install` first")
 		return 1
 	}
 	fmt.Printf("previewing %s for 12 s: glow, halo at 3 s, critter at 6 s (highest rung %d)\n", id, c.MaxRung)
@@ -218,26 +222,49 @@ func reportVisual(report func(status, format string, a ...any)) {
 	if _, err := exec.LookPath("osascript"); err != nil {
 		report("FAIL", "visual: osascript not found")
 	}
-	path, installed := visual.InstalledPath(st.Dir)
-	if !installed {
+	if _, installed := visual.InstalledPath(st.Dir); !installed {
 		report("INFO", "visual signal not installed (`cnw visual install` to enable)")
 		return
 	}
-	if _, err := os.Stat(path); err != nil {
-		report("FAIL", "visual: the LaunchAgent runs %s, which no longer exists (run `cnw visual install`)", path)
-	} else if exe, err := os.Executable(); err == nil && exe != path {
-		report("INFO", "visual: the LaunchAgent runs %s (another cnw install)", path)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		report("FAIL", "visual: %v", err)
+		return
 	}
-	if visual.HostAlive(st.Dir, time.Now()) {
+	p, err := visual.ReadPlist(home)
+	if err != nil {
+		report("FAIL", "visual: can't read the LaunchAgent (run `cnw visual install`): %v", err)
+		return
+	}
+	if _, err := os.Stat(p.Exe); err != nil {
+		report("FAIL", "visual: the LaunchAgent runs %s, which no longer exists (run `cnw visual install`)", p.Exe)
+	} else if exe, err := os.Executable(); err == nil && exe != p.Exe {
+		report("INFO", "visual: the LaunchAgent runs %s (another cnw install)", p.Exe)
+	}
+	if p.StateDir != st.Dir {
+		report("FAIL", "visual: the LaunchAgent watches %s, but hooks write %s (run `cnw visual install`)", p.StateDir, st.Dir)
+	}
+	if visual.HostAlive(p.StateDir, time.Now()) {
 		report("OK", "visual host running")
 	} else {
-		report("FAIL", "visual host not running: no heartbeat in 15 s (log: %s)", filepath.Join(st.Dir, visual.LogFile))
+		report("FAIL", "visual host not running: no heartbeat in 15 s (log: %s)", filepath.Join(p.StateDir, visual.LogFile))
 	}
 	report("INFO", "visual: macOS asks once for permission to control Terminal or iTerm2 on the first jump")
-	if os.Getenv("ORCA_PANE_KEY") != "" {
-		orca := filepath.Join(os.Getenv("ORCA_CLI_BIN_DIR"), "orca")
-		if _, err := os.Stat(orca); err != nil {
-			report("WARN", "visual: orca CLI not found at %s; jumps only bring Orca to the front", orca)
-		}
+	reportOrcaCLI(report, os.Getenv)
+}
+
+// reportOrcaCLI warns, inside Orca, when jump.Detect would not find the orca
+// CLI, so jumps could only bring Orca to the front.
+func reportOrcaCLI(report func(status, format string, a ...any), getenv func(string) string) {
+	if getenv("ORCA_TERMINAL_HANDLE") == "" && getenv("ORCA_PANE_KEY") == "" {
+		return
+	}
+	dir := getenv("ORCA_CLI_BIN_DIR")
+	if dir == "" {
+		report("WARN", "visual: ORCA_CLI_BIN_DIR is not set; jumps only bring Orca to the front")
+		return
+	}
+	if _, err := exec.LookPath(filepath.Join(dir, "orca")); err != nil {
+		report("WARN", "visual: orca CLI not found at %s; jumps only bring Orca to the front", filepath.Join(dir, "orca"))
 	}
 }

@@ -244,11 +244,11 @@ Validation, consistent with the existing keys:
 
 | Command | Purpose |
 |---|---|
-| `cnw visual install` | Write `~/Library/LaunchAgents/com.github.tim-lynn-clark.cnw.visual.plist` (label `com.github.tim-lynn-clark.cnw.visual`, absolute path to the current binary, `KeepAlive` = `{SuccessfulExit: false}`), `launchctl bootstrap gui/<uid>`, and record the binary path in `<state dir>/visual.installed`. Errors on non-macOS. |
+| `cnw visual install` | Write `~/Library/LaunchAgents/com.github.tim-lynn-clark.cnw.visual.plist` (label `com.github.tim-lynn-clark.cnw.visual`, absolute path to the current binary, `KeepAlive` = `{SuccessfulExit: false}`), `launchctl bootstrap gui/<uid>`, and record the binary path in `<state dir>/visual.installed`. It waits for `<state dir>/visual-install.lock` (a blocking lock), retries `bootstrap` up to three times and reports launchctl's stderr; if a first install fails, it removes the plist it wrote. Errors on non-macOS. |
 | `cnw visual uninstall` | `launchctl bootout`, remove the plist and `visual.installed`. |
-| `cnw visual preview [category]` | Write `<state dir>/visual-preview.json`, which the host shows as a waiting session with a compressed ladder (rung 2 at 3 s, rung 3 at 6 s, cleared at 12 s). Default category: permission. |
+| `cnw visual preview [category]` | Write `<state dir>/visual-preview.json`, which the host shows as a waiting session with a compressed ladder (rung 2 at 3 s, rung 3 at 6 s, cleared at 12 s). Default category: permission. If the host's heartbeat is stale it says so on stderr and exits 1. |
 | `cnw visual host` | Run the renderer (§5.1); used by the LaunchAgent. |
-| `cnw visual jump <session-id>` | Run the jump (§6.2); used by the orb. |
+| `cnw visual jump <session-id>` | Run the jump (§6.2); used by the orb. Fails with the read error if the session can't be loaded, or "session is not waiting". |
 
 - *Quit visuals* exits with status 0, so launchd doesn't restart the host until the next login or
   `cnw visual install`. A crash exits non-zero and is restarted.
@@ -268,14 +268,21 @@ Validation, consistent with the existing keys:
 
 `cnw doctor` adds these lines, only on macOS:
 
-- **FAIL:** the LaunchAgent's recorded binary no longer exists.
-- **INFO:** the LaunchAgent runs another existing cnw install.
-- **FAIL:** visuals are installed, but the heartbeat is older than 15 s (the host isn't running).
+Doctor reads the installed plist: `ProgramArguments[0]` is the binary and
+`EnvironmentVariables.CNW_STATE_DIR` the directory the host watches.
+
+- **FAIL:** the plist can't be read.
+- **FAIL:** the plist's binary no longer exists.
+- **INFO:** the plist runs another existing cnw install.
+- **FAIL:** the plist's `CNW_STATE_DIR` differs from the directory the hooks write.
+- **FAIL:** visuals are installed, but the heartbeat in the plist's state directory is older than
+  15 s (the host isn't running).
 - **FAIL:** `osascript` is missing.
 - **INFO:** visuals not installed (`cnw visual install` to enable).
 - **INFO:** Automation consent for Terminal and iTerm2 can't be checked; macOS asks on first jump.
-- **WARN:** running inside Orca, but the `orca` CLI isn't found, so jump falls back to activating
-  Orca.
+- **WARN:** running inside Orca (`ORCA_TERMINAL_HANDLE` or `ORCA_PANE_KEY` set), but
+  `ORCA_CLI_BIN_DIR` is unset or `$ORCA_CLI_BIN_DIR/orca` isn't an executable, so jump falls back
+  to activating Orca.
 
 ## 10. Testing
 
