@@ -46,6 +46,23 @@ func TestBuildSortsResolvesAndDropsStale(t *testing.T) {
 	}
 }
 
+func TestBuildDropsTimedOutEntries(t *testing.T) {
+	cfg := loadConfig(t, "[categories.permission]\nclear_after_s = 120\n")
+	atts := []state.Attention{
+		{SessionID: "done-old", Category: "done", SinceMS: t0.Add(-6 * time.Minute).UnixMilli()},
+		{SessionID: "done-new", Category: "done", SinceMS: t0.Add(-4 * time.Minute).UnixMilli()},
+		{SessionID: "perm-old", Category: "permission", SinceMS: t0.Add(-3 * time.Minute).UnixMilli()},
+		{SessionID: "question", Category: "question", SinceMS: t0.Add(-5 * time.Hour).UnixMilli()},
+	}
+	snap := Build(atts, cfg, t0)
+	if len(snap.Waiting) != 2 || snap.Waiting[0].SessionID != "question" || snap.Waiting[1].SessionID != "done-new" {
+		t.Fatalf("want question then done-new: %+v", snap.Waiting)
+	}
+	if q, d := snap.Waiting[0], snap.Waiting[1]; q.ClearAfterMS != 0 || d.ClearAfterMS != (5*time.Minute).Milliseconds() {
+		t.Fatalf("clear_after_ms: question %d, done %d", q.ClearAfterMS, d.ClearAfterMS)
+	}
+}
+
 func TestWriteReflectsClearedSessions(t *testing.T) {
 	cfg := loadConfig(t, "")
 	st := state.Store{Dir: t.TempDir()}

@@ -138,6 +138,7 @@ function currentWaiting(now) {
   if (snap && snap.version === 1) {
     for (const w of snap.waiting || []) {
       if (now - w.since_ms > snap.stale_after_ms) continue;
+      if (w.clear_after_ms > 0 && now - w.since_ms > w.clear_after_ms) continue;
       out.push({ id: w.session_id, category: w.category, label: w.label || 'session', color: w.color,
         maxRung: w.max_rung, since: w.since_ms, halo: snap.halo_after_ms, critter: snap.critter_after_ms,
         look: snap.critter });
