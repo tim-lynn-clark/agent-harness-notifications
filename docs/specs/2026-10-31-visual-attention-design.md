@@ -353,10 +353,11 @@ CI: a `macos-15` job in `.github/workflows/smoke.yml`:
 - `osacompile -l JavaScript` on the joined script (`go run ./scripts/hostscript`);
 - `cnw visual host` with its stderr sent to a file: fail if no heartbeat file appears within 20 s;
   record the heartbeat, then run `cnw visual preview permission --critter <id>` for each of the six
-  critters, 13 s apart (the critter starts at 6 s and has left before the next preview); after each,
-  fail if the process has exited or stderr has any `cnw visual host:` line (a caught drawing
-  error); at the end fail if the heartbeat hasn't changed (the poll loop is dead). Print stderr on
-  failure.
+  critters, 13 s apart (the critter starts at 6 s and is still waving at the 13 s check, so an error
+  in one critter's exit shows up during the next id); after each, fail if the process has exited or
+  stderr has any `cnw visual host:` line (a caught drawing error); after the last, wait 6 s more so
+  the final critter's exit runs, and check again; at the end fail if the heartbeat hasn't changed
+  (the poll loop is dead). Print stderr on failure.
 
 It isn't a required check until it has proven stable.
 
