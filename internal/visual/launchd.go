@@ -267,3 +267,25 @@ func plistValue(d *xml.Decoder, se xml.StartElement) (any, error) {
 	err := d.DecodeElement(&s, &se)
 	return s, err
 }
+
+// QuitFromMenu reports whether launchd shows the host stopped after a clean
+// exit. KeepAlive restarts it after a crash, so a stopped job whose last exit
+// code is 0 was quit from the orb's menu.
+func QuitFromMenu(run func(string, ...string) ([]byte, error)) bool {
+	out, err := run("launchctl", "print", domain()+"/"+AgentLabel)
+	return err == nil && quitCleanly(out)
+}
+
+// quitCleanly parses `launchctl print` output.
+func quitCleanly(out []byte) bool {
+	var stopped, clean bool
+	for _, line := range bytes.Split(out, []byte("\n")) {
+		switch string(bytes.TrimSpace(line)) {
+		case "state = not running":
+			stopped = true
+		case "last exit code = 0":
+			clean = true
+		}
+	}
+	return stopped && clean
+}

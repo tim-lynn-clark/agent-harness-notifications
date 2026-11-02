@@ -161,14 +161,25 @@ func runVisualPreview(args []string) int {
 		fmt.Fprint(os.Stderr, visualUsage)
 		return 2
 	}
+	// An explicit --critter must work while the configured critter is the
+	// invalid value being replaced, so a broken config falls back to the
+	// defaults with a warning.
 	cfg, _, err := loadConfig()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
+		if critter == "" {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		fmt.Fprintf(os.Stderr, "warning: %v (previewing with the default settings)\n", err)
+		cfg = config.Default()
 	}
 	st, err := openStore()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	if !visual.HostAlive(st.Dir, time.Now()) {
+		fmt.Fprintln(os.Stderr, "the visual host isn't running: run `cnw visual install` first")
 		return 1
 	}
 	if critter == "" {
@@ -182,10 +193,6 @@ func runVisualPreview(args []string) int {
 	}
 	if err := visual.WritePreview(st.Dir, p); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
-	if !visual.HostAlive(st.Dir, time.Now()) {
-		fmt.Fprintln(os.Stderr, "the visual host isn't running: run `cnw visual install` first")
 		return 1
 	}
 	fmt.Printf("previewing %s for 12 s: glow, halo at 3 s, critter (%s) at 6 s (highest rung %d)\n", id, critter, c.MaxRung)
@@ -317,11 +324,22 @@ func reportVisual(report func(status, format string, a ...any)) {
 	}
 	if visual.HostAlive(p.StateDir, time.Now()) {
 		report("OK", "visual host running")
+	} else if visual.QuitFromMenu(jump.Exec) {
+		report("INFO", "visual host was quit from its menu (`cnw visual install` to restart)")
 	} else {
-		report("FAIL", "visual host not running: no heartbeat in 15 s (log: %s)", filepath.Join(p.StateDir, visual.LogFile))
+		report("FAIL", "visual host not running: no heartbeat in 15 s; run `cnw visual install` or log out and back in%s", hostLogHint(p.StateDir))
 	}
 	report("INFO", "visual: macOS asks once for permission to control Terminal or iTerm2 on the first jump")
 	reportOrcaCLI(report, os.Getenv)
+}
+
+// hostLogHint points at the host's log only when it has something in it.
+func hostLogHint(stateDir string) string {
+	path := filepath.Join(stateDir, visual.LogFile)
+	if info, err := os.Stat(path); err != nil || info.Size() == 0 {
+		return ""
+	}
+	return " (log: " + path + ")"
 }
 
 // reportOrcaCLI warns, inside Orca, when jump.Detect would not find the orca

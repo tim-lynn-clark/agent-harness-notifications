@@ -279,3 +279,31 @@ func TestInstallWaitsForTheInstallLock(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestQuitFromMenuParsesLaunchctlPrint(t *testing.T) {
+	const quit = "gui/501/" + AgentLabel + " = {\n\tactive count = 0\n\tstate = not running\n\truns = 1\n\tlast exit code = 0\n}\n"
+	const crashed = "gui/501/" + AgentLabel + " = {\n\tstate = not running\n\tlast exit code = 1\n}\n"
+	const running = "gui/501/" + AgentLabel + " = {\n\tstate = running\n\tlast exit code = 0\n}\n"
+	for _, c := range []struct {
+		out  string
+		err  error
+		want bool
+	}{
+		{quit, nil, true},
+		{crashed, nil, false},
+		{running, nil, false},
+		{"", errors.New("Could not find service"), false},
+	} {
+		var call string
+		got := QuitFromMenu(func(name string, args ...string) ([]byte, error) {
+			call = name + " " + strings.Join(args, " ")
+			return []byte(c.out), c.err
+		})
+		if got != c.want {
+			t.Errorf("%q: got %v, want %v", c.out, got, c.want)
+		}
+		if !strings.HasPrefix(call, "launchctl print gui/") || !strings.HasSuffix(call, "/"+AgentLabel) {
+			t.Errorf("call %q", call)
+		}
+	}
+}
