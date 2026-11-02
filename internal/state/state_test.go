@@ -8,6 +8,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/tim-lynn-clark/agent-harness-notifications/internal/jump"
 )
 
 func TestDefaultDir(t *testing.T) {
@@ -194,7 +196,6 @@ func TestOnAttentionFiresOnlyWhenAttentionChanges(t *testing.T) {
 func TestAttentionsListsOnlyWaitingSessions(t *testing.T) {
 	st := Store{Dir: t.TempDir()}
 	for _, id := range []string{"a", "b", "c"} {
-		id := id
 		if _, err := st.Update(id, func(s *Session) {
 			if id != "b" {
 				s.Attention = &Attention{SessionID: id, Category: "done"}
@@ -223,5 +224,46 @@ func TestLoadReadsWithoutCreating(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(st.Dir, "sessions")); !os.IsNotExist(err) {
 		t.Fatal("Load must not create a session")
+	}
+}
+
+func TestLoadRoundTripsTheJump(t *testing.T) {
+	st := Store{Dir: t.TempDir()}
+	want := Attention{SessionID: "s", Category: "permission", SinceMS: 7, Label: "proj", Cwd: "/p",
+		Jump: jump.Target{Host: jump.HostOrca, OrcaCLI: "orca", OrcaHandle: "h", OrcaPane: "t:l", BundleID: "b"}}
+	if _, err := st.Update("s", func(s *Session) { a := want; s.Attention = &a }); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.Load("s")
+	if err != nil || got.Attention == nil || *got.Attention != want {
+		t.Fatalf("got %+v err %v", got.Attention, err)
+	}
+}
+
+func TestLoadZeroesASessionThatFailsToUnmarshal(t *testing.T) {
+	st := Store{Dir: t.TempDir()}
+	os.MkdirAll(filepath.Join(st.Dir, "sessions"), 0o700)
+	// Valid JSON whose second field has the wrong type: Unmarshal fills next_seq first.
+	os.WriteFile(filepath.Join(st.Dir, "sessions", "a.json"), []byte(`{"next_seq":5,"attention":"x"}`), 0o600)
+	got, err := st.Load("a")
+	if err != nil || got != (Session{}) {
+		t.Fatalf("got %+v err %v", got, err)
+	}
+}
+
+func TestOnAttentionRunsAfterTheFileIsWritten(t *testing.T) {
+	var seen []Attention
+	st := Store{Dir: t.TempDir()}
+	st.OnAttention = func() {
+		var err error
+		if seen, err = st.Attentions(); err != nil {
+			t.Error(err)
+		}
+	}
+	if _, err := st.Update("s", func(s *Session) { s.Attention = &Attention{SessionID: "s", Category: "done"} }); err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) != 1 || seen[0].SessionID != "s" {
+		t.Fatalf("callback saw %+v", seen)
 	}
 }

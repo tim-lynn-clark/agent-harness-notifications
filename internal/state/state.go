@@ -56,7 +56,8 @@ type Session struct {
 }
 
 // Store roots all state files in Dir. OnAttention, when set, runs after an
-// Update persists a change to the session's Attention.
+// Update persists a change to the session's Attention. It runs with that
+// session's lock held, so it must never take a session lock (Update) itself.
 type Store struct {
 	Dir         string
 	OnAttention func()
@@ -102,7 +103,7 @@ func (s Store) Update(sessionID string, fn func(*Session)) (Session, error) {
 	defer lock.Unlock()
 
 	var sess Session
-	data, err := os.ReadFile(path)
+	data, err := readFileRetry(path)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 	case err != nil:
@@ -159,23 +160,40 @@ func WriteFileAtomic(path string, data []byte) error {
 
 // renameRetry is os.Rename, except on Windows, where replacing a file another
 // process has open fails with ERROR_ACCESS_DENIED or ERROR_SHARING_VIOLATION
-// until that process closes it; there it retries for about half a second, as
-// Go's cmd/internal/robustio does.
+// until that process closes it; there it retries those two errors for about
+// half a second. (Go's cmd/internal/robustio does the same for up to 2 s and
+// also retries ERROR_FILE_NOT_FOUND; our holders are brief readers, and a
+// missing temporary file is not transient.)
 func renameRetry(from, to string) error {
 	err := os.Rename(from, to)
 	if runtime.GOOS != "windows" {
 		return err
 	}
-	for i := 0; i < 50 && isTransientRenameErr(err); i++ {
+	for i := 0; i < 50 && isTransientErr(err); i++ {
 		time.Sleep(10 * time.Millisecond)
 		err = os.Rename(from, to)
 	}
 	return err
 }
 
-// isTransientRenameErr reports ERROR_ACCESS_DENIED (5) and
-// ERROR_SHARING_VIOLATION (32), by number so this builds on every OS.
-func isTransientRenameErr(err error) bool {
+// readFileRetry is os.ReadFile, except on Windows, where opening a file while
+// a writer renames over it can fail with the same transient errors as
+// renameRetry; there it retries them for about half a second.
+func readFileRetry(path string) ([]byte, error) {
+	data, err := os.ReadFile(path)
+	if runtime.GOOS != "windows" {
+		return data, err
+	}
+	for i := 0; i < 50 && isTransientErr(err); i++ {
+		time.Sleep(10 * time.Millisecond)
+		data, err = os.ReadFile(path)
+	}
+	return data, err
+}
+
+// isTransientErr reports ERROR_ACCESS_DENIED (5) and ERROR_SHARING_VIOLATION
+// (32), by number so this builds on every OS.
+func isTransientErr(err error) bool {
 	var errno syscall.Errno
 	return errors.As(err, &errno) && (errno == 5 || errno == 32)
 }
@@ -185,14 +203,16 @@ func isTransientRenameErr(err error) bool {
 // file open), so an unlocked read is never partial.
 func (s Store) Load(sessionID string) (Session, error) {
 	var sess Session
-	data, err := os.ReadFile(s.sessionPath(sessionID))
+	data, err := readFileRetry(s.sessionPath(sessionID))
 	if errors.Is(err, fs.ErrNotExist) {
 		return sess, nil
 	}
 	if err != nil {
 		return sess, err
 	}
-	_ = json.Unmarshal(data, &sess) // corrupt: zero, as in Update
+	if json.Unmarshal(data, &sess) != nil {
+		sess = Session{} // corrupt: zero, as in Update
+	}
 	return sess, nil
 }
 
@@ -212,7 +232,7 @@ func (s Store) Attentions() ([]Attention, error) {
 		if !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		data, err := readFileRetry(filepath.Join(dir, e.Name()))
 		if err != nil {
 			continue
 		}
