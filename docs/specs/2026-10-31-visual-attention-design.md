@@ -179,8 +179,8 @@ Default colours:
 #### 5.2.1 Critters
 
 `[visual] critter` picks the look; the default, `random`, picks one of the six each time a critter
-appears, and the choice holds for that appearance (entry, idle, exit). The category colour drives
-each critter's accent.
+appears, never the same as the previous random pick, and the choice holds for that appearance
+(entry, idle, exit). The category colour drives each critter's accent.
 
 | id | Look | Entry | Idle |
 |---|---|---|---|
@@ -352,9 +352,11 @@ CI: a `macos-15` job in `.github/workflows/smoke.yml`:
 
 - `osacompile -l JavaScript` on the joined script (`go run ./scripts/hostscript`);
 - `cnw visual host` with its stderr sent to a file: fail if no heartbeat file appears within 20 s;
-  record the heartbeat, start a preview, and after 8 s (the critter starts at 6 s) fail if the
-  process has exited, the heartbeat hasn't changed (the poll loop is dead), or stderr has any
-  `cnw visual host:` line (a caught drawing error); print stderr on failure.
+  record the heartbeat, then run `cnw visual preview permission --critter <id>` for each of the six
+  critters, 13 s apart (the critter starts at 6 s and has left before the next preview); after each,
+  fail if the process has exited or stderr has any `cnw visual host:` line (a caught drawing
+  error); at the end fail if the heartbeat hasn't changed (the poll loop is dead). Print stderr on
+  failure.
 
 It isn't a required check until it has proven stable.
 

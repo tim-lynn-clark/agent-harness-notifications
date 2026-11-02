@@ -124,7 +124,7 @@ jobs:
         run: |
           go run ./scripts/hostscript > "$RUNNER_TEMP/host.js"
           osacompile -l JavaScript -o "$RUNNER_TEMP/host.scpt" "$RUNNER_TEMP/host.js"
-      - name: Run the visual host against a preview
+      - name: Run the visual host against a preview of every critter
         run: |
           export CNW_STATE_DIR="$RUNNER_TEMP/state" CNW_CONFIG="$RUNNER_TEMP/none.toml"
           log="$RUNNER_TEMP/visual-host.log"
@@ -134,10 +134,13 @@ jobs:
           for _ in $(seq 40); do [ -f "$beat" ] && break; kill -0 "$host" || break; sleep 0.5; done
           [ -f "$beat" ] || fail "no heartbeat within 20 s"
           first=$(cat "$beat")
-          ./bin/cnw visual preview permission || fail "preview failed"
-          # The critter starts 6 s into the preview; the heartbeat is rewritten every 5 s.
-          sleep 8
-          kill -0 "$host" || fail "the visual host exited"
+          for id in blob ghost cat deskbot tintoy drone; do
+            ./bin/cnw visual preview permission --critter "$id" || fail "preview $id failed"
+            # The critter starts 6 s in, settles by about 11 s and is gone before the next preview.
+            sleep 13
+            kill -0 "$host" || fail "the visual host exited during $id"
+            ! grep -q 'cnw visual host:' "$log" || fail "the visual host logged errors during $id"
+          done
+          # The heartbeat is rewritten every 5 s.
           [ "$(cat "$beat")" != "$first" ] || fail "the heartbeat did not change: the poll loop is not running"
-          ! grep -q 'cnw visual host:' "$log" || fail "the visual host logged errors"
           kill "$host"
