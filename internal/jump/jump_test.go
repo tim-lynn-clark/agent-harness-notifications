@@ -4,6 +4,7 @@ import (
 	"errors"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -53,9 +54,32 @@ func TestDetectTerminalWithoutTTYActivatesTheApp(t *testing.T) {
 	}
 }
 
+func TestDetectByPaneKeyAlone(t *testing.T) {
+	got := Detect(env(map[string]string{"ORCA_PANE_KEY": "tab:leaf", "ORCA_WORKTREE_ID": "w"}), "", nil)
+	if got != (Target{Host: HostOrca, OrcaCLI: "orca", OrcaWorktree: "w", OrcaPane: "tab:leaf"}) {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestDetectCallsTTYOnlyForTerminal(t *testing.T) {
+	tty := func() string { t.Fatal("tty called"); return "" }
+	for _, m := range []map[string]string{
+		{"ORCA_TERMINAL_HANDLE": "h", "TERM_PROGRAM": "Apple_Terminal"},
+		{"TERM_PROGRAM": "iTerm.app", "ITERM_SESSION_ID": "w0t0p0:A"},
+		{"TERM_PROGRAM": "vscode", "__CFBundleIdentifier": "com.microsoft.VSCode"},
+		{"__CFBundleIdentifier": "com.mitchellh.ghostty"},
+		{},
+	} {
+		Detect(env(m), "", tty)
+	}
+}
+
 func TestProcessTTYWalksUpToTheFirstTerminal(t *testing.T) {
 	ps := map[string]string{"40": "30 ??", "30": "20 ??", "20": "1 ttys007"}
 	run := func(name string, args ...string) ([]byte, error) {
+		if name != "ps" || !reflect.DeepEqual(args[:3], []string{"-o", "ppid=,tty=", "-p"}) {
+			t.Fatalf("call %s %v", name, args)
+		}
 		return []byte(" " + ps[args[len(args)-1]] + "\n"), nil
 	}
 	if got := ProcessTTY(40, run); got != "/dev/ttys007" {
@@ -64,6 +88,29 @@ func TestProcessTTYWalksUpToTheFirstTerminal(t *testing.T) {
 	none := func(string, ...string) ([]byte, error) { return []byte("1 ??\n"), nil }
 	if got := ProcessTTY(40, none); got != "" {
 		t.Fatalf("no terminal: got %q", got)
+	}
+}
+
+func TestProcessTTYStopsOnAPsError(t *testing.T) {
+	fail := func(string, ...string) ([]byte, error) { return []byte("1 ttys001\n"), errors.New("no such process") }
+	if got := ProcessTTY(40, fail); got != "" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestProcessTTYGivesUpAfterEightLevels(t *testing.T) {
+	calls := 0
+	// Every process has a parent one lower and no terminal; the 9th would have one.
+	run := func(_ string, args ...string) ([]byte, error) {
+		calls++
+		pid, _ := strconv.Atoi(args[len(args)-1])
+		if calls > 8 {
+			return []byte("1 ttys009\n"), nil
+		}
+		return []byte(strconv.Itoa(pid-1) + " ??\n"), nil
+	}
+	if got := ProcessTTY(100, run); got != "" || calls != 8 {
+		t.Fatalf("got %q after %d calls", got, calls)
 	}
 }
 
@@ -91,6 +138,21 @@ func (f *fake) run(name string, args ...string) ([]byte, error) {
 	return nil, nil
 }
 
+func TestRunOrcaSwitchesByHandleThenActivates(t *testing.T) {
+	f := &fake{}
+	target := Target{Host: HostOrca, OrcaCLI: "orca", OrcaHandle: "term_1", OrcaWorktree: "w", OrcaPane: "t:l", BundleID: "com.example.orca"}
+	if err := Run(target, f.run); err != nil {
+		t.Fatal(err)
+	}
+	want := [][]string{
+		{"orca", "terminal", "switch", "--terminal", "term_1", "--json"},
+		{"open", "-b", "com.example.orca"},
+	}
+	if !reflect.DeepEqual(f.calls, want) {
+		t.Fatalf("calls %v", f.calls)
+	}
+}
+
 func TestRunOrcaFallsBackFromStaleHandleToPaneMatch(t *testing.T) {
 	f := &fake{
 		fail: []string{"--terminal term_old"},
@@ -102,9 +164,14 @@ func TestRunOrcaFallsBackFromStaleHandleToPaneMatch(t *testing.T) {
 	if err := Run(target, f.run); err != nil {
 		t.Fatal(err)
 	}
-	last := f.calls[len(f.calls)-1]
-	if !reflect.DeepEqual(last, []string{"orca", "terminal", "switch", "--terminal", "term_new", "--json"}) {
-		t.Fatalf("last call %v", last)
+	want := [][]string{
+		{"orca", "terminal", "switch", "--terminal", "term_old", "--json"},
+		{"orca", "terminal", "list", "--worktree", "id:repo::/w", "--json"},
+		{"orca", "terminal", "switch", "--terminal", "term_new", "--json"},
+		{"open", "-b", "com.stablyai.orca"},
+	}
+	if !reflect.DeepEqual(f.calls, want) {
+		t.Fatalf("calls %v", f.calls)
 	}
 }
 
@@ -116,6 +183,18 @@ func TestRunOrcaActivatesTheAppWhenNoPaneMatches(t *testing.T) {
 	last := f.calls[len(f.calls)-1]
 	if !reflect.DeepEqual(last, []string{"open", "-b", "com.stablyai.orca"}) {
 		t.Fatalf("last call %v", last)
+	}
+}
+
+func TestRunAppleScriptSuccessIsOneCall(t *testing.T) {
+	for _, target := range []Target{{Host: HostITerm, ITermSession: "ABC"}, {Host: HostTerminal, TTY: "/dev/ttys001"}} {
+		f := &fake{}
+		if err := Run(target, f.run); err != nil {
+			t.Fatal(err)
+		}
+		if len(f.calls) != 1 || f.calls[0][0] != "osascript" {
+			t.Fatalf("%s: calls %v", target.Host, f.calls)
+		}
 	}
 }
 

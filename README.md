@@ -252,8 +252,8 @@ longer you leave it, and clears by itself when you answer or type your next prom
 | 4 min | A small critter walks in from the screen edge holding a sign with the project name. |
 
 Done, error and usage limit stop at the ring. A menu bar dot shows how many sessions are waiting;
-its menu lists them, and clicking one brings its terminal to the front (Orca terminal, iTerm2 or
-Terminal.app tab, VS Code or Cursor window, or else the app). The overlays ignore clicks and don't
+its menu lists them, and clicking one brings its terminal to the front (Orca, switched to the session's
+terminal; iTerm2 or Terminal.app tab; VS Code or Cursor window, or else the app). The overlays ignore clicks and don't
 appear in screen shares or recordings. With Reduce Motion on, nothing pulses or walks.
 
 ```bash

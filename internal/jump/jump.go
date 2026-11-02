@@ -137,14 +137,11 @@ end run`
 func Run(t Target, run Runner) error {
 	switch t.Host {
 	case HostOrca:
-		if t.OrcaHandle != "" {
-			if _, err := run(t.OrcaCLI, "terminal", "switch", "--terminal", t.OrcaHandle, "--json"); err == nil {
-				return nil
-			}
-		}
-		if h := orcaHandleForPane(t, run); h != "" {
-			if _, err := run(t.OrcaCLI, "terminal", "switch", "--terminal", h, "--json"); err == nil {
-				return nil
+		// A switch selects the terminal inside Orca but leaves the app where it
+		// is, so every path ends by activating Orca.
+		if t.OrcaHandle == "" || !orcaSwitch(t.OrcaCLI, t.OrcaHandle, run) {
+			if h := orcaHandleForPane(t, run); h != "" {
+				orcaSwitch(t.OrcaCLI, h, run)
 			}
 		}
 		return activate(firstNonEmpty(t.BundleID, "com.stablyai.orca"), run)
@@ -163,6 +160,12 @@ func Run(t Target, run Runner) error {
 		return activate(t.BundleID, run)
 	}
 	return errors.New("no terminal recorded for this session")
+}
+
+// orcaSwitch selects handle's terminal inside Orca and reports success.
+func orcaSwitch(cli, handle string, run Runner) bool {
+	_, err := run(cli, "terminal", "switch", "--terminal", handle, "--json")
+	return err == nil
 }
 
 func orcaHandleForPane(t Target, run Runner) string {

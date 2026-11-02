@@ -189,7 +189,7 @@ record a `Jump` that becomes part of the attention:
 
 | Host | Detected by | Stored | Jump action |
 |---|---|---|---|
-| Orca | `TERM_PROGRAM=Orca`; `ORCA_TERMINAL_HANDLE`, `ORCA_WORKTREE_ID`, `ORCA_PANE_KEY` | all three | `orca terminal switch --terminal <handle>`. If that fails (handles are runtime-issued and change when Orca restarts), `orca terminal list --worktree id:<worktree> --json` and pick the terminal whose `tabId:leafId` equals the pane key, then switch to its handle. Otherwise activate Orca. |
+| Orca | `TERM_PROGRAM=Orca`; `ORCA_TERMINAL_HANDLE`, `ORCA_WORKTREE_ID`, `ORCA_PANE_KEY` | all three | `orca terminal switch --terminal <handle>`. If that fails (handles are runtime-issued and change when Orca restarts), `orca terminal list --worktree id:<worktree> --json` and pick the terminal whose `tabId:leafId` equals the pane key, then switch to its handle. `terminal switch` selects the terminal inside Orca but doesn't bring Orca to the front, so every path ends with `open -b <bundle id, default com.stablyai.orca>`. |
 | iTerm2 | `TERM_PROGRAM=iTerm.app`, `ITERM_SESSION_ID` | session unique id | AppleScript: select the session with that id, activate iTerm2 |
 | Terminal.app | `TERM_PROGRAM=Apple_Terminal` | controlling tty, found by walking parent pids with `ps -o tty=` | AppleScript: select the tab whose `tty` matches, bring its window to the front, activate Terminal |
 | VS Code, Cursor | `TERM_PROGRAM=vscode` and `__CFBundleIdentifier` | bundle id, cwd | `open -b <bundle id> <cwd>` |
@@ -202,7 +202,8 @@ shell.
 
 Jump logic lives in Go (`internal/jump`) and is invoked as `cnw visual jump <session-id>`. It reads
 the session's attention and runs the action for its host. The JXA host only runs that command;
-it holds no host-specific logic. Jumping never clears attention.
+it holds no host-specific logic. Jumping never clears attention. For Orca, a successful switch
+(by handle or by matched pane) is always followed by activating the app.
 
 The first AppleScript jump into Terminal.app or iTerm2 triggers macOS's one-time Automation consent
 prompt for `osascript`.
