@@ -108,7 +108,7 @@ Every `cnw` command this README asks you to run has a slash command with the sam
 | `/cnw:init` | `cnw init` |
 | `/cnw:voices [play ID [CATEGORY]]` | `cnw voices …` |
 | `/cnw:kokoro install [--from DIR] \| urls \| remove` | `cnw kokoro …` |
-| `/cnw:visual install \| uninstall \| preview [CATEGORY]` | `cnw visual …` (macOS) |
+| `/cnw:visual install \| uninstall \| critters \| preview [CATEGORY] [--critter ID]` | `cnw visual …` (macOS) |
 
 Claude Code shows the output and explains any error or FAIL/WARN line; omp shows the output as
 is. `notify`, `resolve`, `turn-end` and `hook` are what the agents themselves run, so they have
@@ -249,16 +249,28 @@ longer you leave it, and clears by itself when you answer or type your next prom
 |---|---|
 | 0 s | A soft glow around the edge of every display, in the category's colour. With several sessions waiting, each edge is split into one colour per session. |
 | 60 s | A ring around the pointer with the project and what it needs (`notifier · permission`). |
-| 4 min | A small critter walks in from the screen edge holding a sign with the project name. |
+| 2 min | A critter comes in from the nearer screen edge, stops below the pointer and holds up a sign with the category and the project name. |
 
 Done, error and usage limit stop at the ring. A menu bar dot shows how many sessions are waiting;
 its menu lists them, and clicking one brings its terminal to the front (Orca, switched to the
 session's terminal; iTerm2 or Terminal.app tab; VS Code or Cursor window; or else the app). The
 overlays ignore clicks and don't appear in screen shares or recordings. With Reduce Motion on, nothing pulses or walks.
 
+The critter is one of six, a different one each time unless you pick one with `critter` under
+`[visual]` (`cnw visual critters` lists them):
+
+- `blob`: a shaded blob with sparkly eyes and a glowing antenna bulb; walks in.
+- `ghost`: a pale ghost with a wavy hem and a glowing outline; floats up and drifts across.
+- `cat`: a round cat with ears, whiskers and a swishing tail; pads in and sits.
+- `deskbot`: a glossy white robot with a dark visor and a heart light; rolls in on one wheel.
+- `tintoy`: a red and cream wind-up tin robot with a spinning key and a chest dial; waddles in.
+- `drone`: a dark drone with two rotors and a camera eye; flies in with the sign on cables.
+
 ```bash
-cnw visual install            # start it now and at every login (a LaunchAgent)
-cnw visual preview [CATEGORY] # run the whole escalation in 12 s
+cnw visual install                    # start it now and at every login (a LaunchAgent)
+cnw visual preview [CATEGORY]         # run the whole escalation in 12 s
+cnw visual preview --critter ghost    # ... with a given critter
+cnw visual critters                   # list the critters; * marks yours
 cnw visual uninstall
 ```
 
@@ -299,8 +311,9 @@ with forward slashes: `\U` inside a double-quoted string is a TOML escape.
 
 Visual signal keys (see [Visual signal (macOS)](#visual-signal-macos)):
 
-- `[visual]`: `halo_after_s` (default 60), `critter_after_s` (default 240, must be greater than
-  `halo_after_s`), `stale_after_h` (default 6: ignore sessions waiting longer, e.g. after a crash).
+- `[visual]`: `halo_after_s` (default 60), `critter_after_s` (default 120, must be greater than
+  `halo_after_s`), `stale_after_h` (default 6: ignore sessions waiting longer, e.g. after a crash),
+  `critter` (default `"random"`, or `"blob"`, `"ghost"`, `"cat"`, `"deskbot"`, `"tintoy"`, `"drone"`).
 - Per category: `color` (`"#RRGGBB"`) and `max_rung` (1 glow, 2 ring, 3 critter).
 
 ```toml

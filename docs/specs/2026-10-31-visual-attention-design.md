@@ -29,7 +29,7 @@ to miss and stays until the request is dealt with.
   interactive surface.
 - Manual dismissal of a waiting session. Staleness (§4.4) covers crashed sessions.
 - Focus-mode or Do Not Disturb detection. JXA has no public API for it, so it isn't attempted.
-- User-supplied critter sprites. The critter is drawn from vector shapes only.
+- User-supplied critter sprites. The critters are drawn from vector shapes only.
 - Selecting the terminal panel inside VS Code or Cursor; jump focuses the workspace window.
 
 ## 4. Attention state (all platforms)
@@ -106,8 +106,9 @@ together under `<state dir>/visual.lock`, so the last writer always reflects the
 {
   "version": 1,
   "halo_after_ms": 60000,
-  "critter_after_ms": 240000,
+  "critter_after_ms": 120000,
   "stale_after_ms": 21600000,
+  "critter": "random",
   "waiting": [
     {"session_id": "…", "category": "permission", "since_ms": 1793449940000,
      "label": "notifier, specification", "color": "#F5A524", "max_rung": 3}
@@ -116,8 +117,8 @@ together under `<state dir>/visual.lock`, so the last writer always reflects the
 ```
 
 - `waiting` is sorted oldest first.
-- Colours, highest rungs and thresholds are resolved from config when the snapshot is written, so
-  the renderer never reads TOML.
+- Colours, highest rungs, thresholds and the critter (`[visual] critter`, possibly `"random"`) are
+  resolved from config when the snapshot is written, so the renderer never reads TOML.
 - The snapshot carries no ladder state; the renderer derives rungs from `since_ms` and its clock.
 - If the config can't be loaded (a parse or range error), the snapshot is still rewritten, using the
   built-in colours, rungs and thresholds (`config.Default()`). The waiting list therefore always
@@ -131,8 +132,9 @@ together under `<state dir>/visual.lock`, so the last writer always reflects the
 
 ### 5.1 Process
 
-- `cnw visual host` writes the embedded (`go:embed`) JXA script to
-  `<state dir>/visual-host-<content hash>.js` and `exec`s `osascript -l JavaScript` on it.
+- `cnw visual host` writes the embedded (`go:embed`) JXA script, `host.js` followed by
+  `critters.js` joined into one file, to `<state dir>/visual-host-<hash of the joined content>.js`
+  and `exec`s `osascript -l JavaScript` on it.
 - The script runs `NSApplication` with the Accessory activation policy: no Dock icon, never takes
   focus.
 - Every 250 ms it reads `visual.json` and `visual-preview.json`, rebuilds the overlay windows if the
@@ -153,10 +155,10 @@ time has passed, capped at the session's `max_rung`:
 |---|---|---|
 | 1 Aurora | `since_ms` | An inner glow about 28 px deep along every edge of every display, breathing in opacity over a 2.4 s cycle (a Core Animation animation, run by the render server). With N waiting sessions, each edge is divided along its length into N equal segments; segment *i* takes the colour of the *i*-th oldest session. |
 | 2 Halo | `+ halo_after_s` (60) | A ring around the pointer, with a label beside it: `<label> · <category>`, plus ` +N` when N other sessions are also waiting. Shown only on the pointer's display. A 60 Hz `NSTimer` updates the position, and runs only while the pointer moves: it stops after 0.5 s of stillness, and the 250 ms poll restarts it when the pointer moves again, so the halo can lag by up to about 250 ms when movement starts. Each frame moves only the halo's container layer. The label names the oldest waiting session. It sits right of the ring, or left of it where it would run off the display, and renders at that display's scale. The halo is rebuilt when Reduce Motion changes. |
-| 3 Critter | `+ critter_after_s` (240) | A vector creature built from rounded `CALayer` shapes (body, eyes, feet, sign) walks in from the bottom edge of the pointer's display with a squash-and-stretch walk cycle, stops, and holds up a sign showing the label and a category glyph; it blinks now and then. On clear it waves and walks off, about 3.8 s in total (a 350 ms fade with Reduce Motion). One critter at a time, for the oldest session at rung 3; the next critter enters only after the previous one has left. |
+| 3 Critter | `+ critter_after_s` (120) | A vector creature (§5.2.1) enters from the nearer side edge of the pointer's display, stops with its body centred below the pointer, and holds up a sign showing the category glyph or word, the category and the label; it idles (blinks, bobs, sways its sign) while it waits. On clear it waves or wiggles for 1.2 s, then leaves toward the nearer edge: walkers walk, roll or waddle off, floaters rise or fly off (a 350 ms fade with Reduce Motion). One critter at a time, for the oldest session at rung 3; the next critter enters only after the previous one has left. |
 
 When an attention is cleared, its aurora band and halo fade within one poll interval plus about
-300 ms of animation. Its critter waves and walks off (about 3.8 s) as described above.
+300 ms of animation. Its critter waves and leaves as described above.
 
 Default `max_rung`: 3 for permission, plan_approval, question, mcp_input and done_question; 2 for
 done, done_background, error, usage_limit and idle_reminder.
@@ -174,6 +176,30 @@ Default colours:
 | usage_limit | `#E040A0` magenta |
 | idle_reminder | inherits the category it reminds about (§4.2); `#F5D90A` yellow when nothing was waiting |
 
+#### 5.2.1 Critters
+
+`[visual] critter` picks the look; the default, `random`, picks one of the six each time a critter
+appears, and the choice holds for that appearance (entry, idle, exit). The category colour drives
+each critter's accent.
+
+| id | Look | Entry | Idle |
+|---|---|---|---|
+| `blob` | shaded blob with a highlight, sparkly eyes, cheeks, a smile, a glowing antenna bulb, feet and an arm holding the sign | walks in (squash and stretch) | bob, bulb pulse, blink, sign sway |
+| `ghost` | pale body with a wavy hem, outlined and glowing in the category colour, an "oh" mouth, a small arm holding a rounded sign | floats up from the bottom edge near the side it comes from, then drifts across | slow float bob, shadow pulse, blink |
+| `cat` | round body and head, ears, belly, whiskers, paws, tail | pads in, then sits | tail swish, slow blink, sign sway |
+| `deskbot` | glossy white capsule head, dark visor with two glowing eyes, heart light, one wheel | rolls in (the wheel spins), leans forward as it stops | blink, heart pulse, bob, sign sway |
+| `tintoy` | red and cream tin robot (fixed enamel): rivets, porthole eyes, grille mouth, wind-up key, chest dial with a needle, accordion arm | waddles in (side-to-side rock) | key spins, needle twitches, rock |
+| `drone` | dark round body, two blurred rotor rings, a camera eye whose iris breathes, a red tally light, the sign hanging on two cables | flies in at height and descends to hover with its sign about 120 pt above the bottom edge | hover bob, rotor shimmer, sign swing, tally blink |
+
+- **Size:** the body is about 120–130 pt tall and the whole figure, sign included, about 250 pt.
+  The sign's first line is 20 pt, its second 15 pt; text renders at the display's scale.
+- **Placement:** the body stops centred below the pointer's x, clamped so the figure and its sign
+  stay at least 24 pt inside the display. Long labels are truncated with … so the sign is never
+  wider than 420 pt.
+- **Drawing:** layers (`CAShapeLayer` paths, circles, rounded rectangles), with translucent layers
+  for shading and Core Animation shadows for glows; colours are built as `CGColor`s directly. The
+  idle animations are Core Animation animations, run by the render server.
+
 ### 5.3 Windows
 
 - One overlay window per `NSScreen`: borderless, transparent background, `ignoresMouseEvents`,
@@ -188,7 +214,7 @@ When `NSWorkspace.accessibilityDisplayShouldReduceMotion` is true:
 
 - the aurora is drawn at constant opacity;
 - the halo still follows the pointer;
-- the critter fades in and out in place without walking.
+- the critter fades in and out in place, with no entry motion and no idle animation.
 
 ## 6. Orb and jump
 
@@ -234,8 +260,9 @@ prompt for `osascript`.
 ```toml
 [visual]
 halo_after_s    = 60
-critter_after_s = 240
+critter_after_s = 120
 stale_after_h   = 6
+critter         = "random"   # or blob, ghost, cat, deskbot, tintoy, drone
 
 [categories.permission]
 color    = "#F5A524"
@@ -248,7 +275,9 @@ Validation, consistent with the existing keys:
 - `max_rung` must be 1, 2 or 3;
 - `halo_after_s` must be at least 0;
 - `critter_after_s` must be greater than `halo_after_s`;
-- `stale_after_h` must be at least 1.
+- `stale_after_h` must be at least 1;
+- `critter` must be `random` or one of the six ids; anything else is an error
+  (`visual.critter "x" is not one of: random, blob, …`).
 
 ## 8. Commands and install
 
@@ -256,7 +285,8 @@ Validation, consistent with the existing keys:
 |---|---|
 | `cnw visual install` | Write `~/Library/LaunchAgents/com.github.tim-lynn-clark.cnw.visual.plist` (label `com.github.tim-lynn-clark.cnw.visual`, absolute path to the current binary, `KeepAlive` = `{SuccessfulExit: false}`), `launchctl bootstrap gui/<uid>`, and record the binary path in `<state dir>/visual.installed`. It waits for `<state dir>/visual-install.lock` (a blocking lock), retries `bootstrap` up to three times and reports launchctl's stderr; if a first install fails, it removes the plist it wrote. Errors on non-macOS. |
 | `cnw visual uninstall` | `launchctl bootout`, remove the plist and `visual.installed`. |
-| `cnw visual preview [category]` | Write `<state dir>/visual-preview.json`, which the host shows as a waiting session with a compressed ladder (rung 2 at 3 s, rung 3 at 6 s, cleared at 12 s). Default category: permission. If the host's heartbeat is stale it says so on stderr and exits 1. |
+| `cnw visual preview [category] [--critter ID]` | Write `<state dir>/visual-preview.json`, which the host shows as a waiting session with a compressed ladder (rung 2 at 3 s, rung 3 at 6 s, cleared at 12 s), using the given critter or else the configured one. Default category: permission. An unknown category or critter id is a usage error (exit 2). If the host's heartbeat is stale it says so on stderr and exits 1. |
+| `cnw visual critters` | List the critter ids with a one-line description, `*` marking the configured one. |
 | `cnw visual host` | Run the renderer (§5.1); used by the LaunchAgent. |
 | `cnw visual jump <session-id>` | Run the jump (§6.2); used by the orb. Fails with the read error if the session can't be loaded, or "session is not waiting". |
 
@@ -272,7 +302,7 @@ Validation, consistent with the existing keys:
   `launchctl bootout` then `launchctl bootstrap` (`kickstart` would keep launchd's cached copy of
   the old plist). If `visual.installed` is absent, there's nothing to heal.
 - **Slash commands:** a `/cnw:visual` skill (`skills/visual/SKILL.md`) and the matching omp
-  registration in `omp/cnw.ts` expose `install`, `uninstall` and `preview`.
+  registration in `omp/cnw.ts` expose `install`, `uninstall`, `critters` and `preview`.
 
 ## 9. Doctor
 
@@ -306,7 +336,12 @@ Go unit tests:
 - Replacement resets `SinceMS`; `idle_reminder` keeps category and `SinceMS`.
 - The snapshot omits stale entries, is sorted oldest first, and carries the resolved colour and
   `max_rung`.
-- Config validation for every `[visual]` key and the per-category keys.
+- Config validation for every `[visual]` key (including `critter`: the default `random`, each id,
+  an unknown id rejected) and the per-category keys.
+- The snapshot and the preview file carry `critter`; preview flag parsing (category with a critter,
+  critter only, unknown critter → exit 2); `cnw visual critters` lists every id and marks the
+  configured one; the host script's content and name change when either `host.js` or `critters.js`
+  changes.
 - Jump detection from environment and process ancestry, for every row of §6.1, using an injected
   environment and command runner.
 - Upgrade healing re-points the LaunchAgent only when the recorded binary is missing or older than
@@ -315,7 +350,7 @@ Go unit tests:
 
 CI: a `macos-15` job in `.github/workflows/smoke.yml`:
 
-- `osacompile -l JavaScript` on the embedded script;
+- `osacompile -l JavaScript` on the joined script (`go run ./scripts/hostscript`);
 - `cnw visual host` with its stderr sent to a file: fail if no heartbeat file appears within 20 s;
   record the heartbeat, start a preview, and after 8 s (the critter starts at 6 s) fail if the
   process has exited, the heartbeat hasn't changed (the poll loop is dead), or stderr has any
