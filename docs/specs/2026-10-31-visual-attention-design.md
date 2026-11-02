@@ -74,7 +74,7 @@ Attention is cleared by exactly the events that clear `Pending` today:
 | `CancelAll` (UserPromptSubmit, PermissionDenied, ElicitationResult, SessionEnd) | always |
 | Stop / StopFailure | the prior attention, before their own Done/Error attention is set by its claim |
 | `CancelMatchingTool` (PostToolUse, PostToolUseFailure) | only when tool name and agent id match the attention's originating pending prompt |
-| omp `cnw resolve` (sent on tool approval or plan review resolved, the `ask` tool finishing, an aborted turn, and every user `input`), `cnw turn-end` | always |
+| omp `cnw resolve` (sent on tool approval or plan review resolved, the `ask` tool finishing, an aborted turn, every user `input`, and session shutdown), `cnw turn-end` | always |
 
 Done, error and usage limit have no pending prompt, so their attention is cleared only by the next
 UserPromptSubmit or SessionEnd (or omp's equivalents).
@@ -292,8 +292,8 @@ Go unit tests:
 CI: a `macos-15` job in `.github/workflows/smoke.yml`:
 
 - `osacompile -l JavaScript` on the embedded script;
-- `cnw visual host` against a preview snapshot for 5 s, asserting the heartbeat file appears and
-  the process is still running.
+- `cnw visual host`: wait up to 20 s for its heartbeat file, start a preview, and after 5 s assert
+  the heartbeat file exists and the process is still running.
 
 It isn't a required check until it has proven stable.
 

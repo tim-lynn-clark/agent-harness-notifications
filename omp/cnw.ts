@@ -174,7 +174,11 @@ export default function cnwExtension(pi: ExtensionAPI): void {
   on("plan_review_requested", (_e, ctx) => prompt("plan_approval", ctx));
   on("plan_review_resolved", (_e, ctx) => resolve(ctx));
 
-  for (const event of ["agent_start", "session_shutdown"]) on(event, () => clearIdle());
+  on("agent_start", () => clearIdle());
+  on("session_shutdown", (_e, ctx) => {
+    clearIdle();
+    resolve(ctx);
+  });
   on("input", (_e, ctx) => {
     clearIdle();
     resolve(ctx);

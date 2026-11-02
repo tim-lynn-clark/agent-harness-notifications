@@ -124,9 +124,9 @@ jobs:
         run: |
           export CNW_STATE_DIR="$RUNNER_TEMP/state" CNW_CONFIG="$RUNNER_TEMP/none.toml"
           ./bin/cnw visual host & host=$!
-          sleep 2
+          for _ in $(seq 40); do [ -f "$CNW_STATE_DIR/visual-host.alive" ] && break; kill -0 "$host" || break; sleep 0.5; done
           ./bin/cnw visual preview permission
           sleep 5
-          kill -0 "$host" || { echo "the visual host exited" >&2; cat "$CNW_STATE_DIR/visual-host.log" 2>/dev/null; exit 1; }
+          kill -0 "$host" || { echo "the visual host exited" >&2; exit 1; }
           test -f "$CNW_STATE_DIR/visual-host.alive" || { echo "no heartbeat" >&2; exit 1; }
           kill "$host"
