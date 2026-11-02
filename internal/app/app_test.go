@@ -406,3 +406,28 @@ func TestMarkWaitingLaterClearWins(t *testing.T) {
 		t.Fatalf("got %+v", a)
 	}
 }
+
+func TestAttentionClearNeverMovesBackwards(t *testing.T) {
+	t1, t2 := t0, t0.Add(time.Second)
+	clears := map[string]func(t *testing.T, st state.Store, now time.Time){
+		"resolve": func(t *testing.T, st state.Store, now time.Time) {
+			if err := Resolve(st, "s", now); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"apply": func(t *testing.T, st state.Store, now time.Time) {
+			mustApply(t, st, event.Event{HookEventName: "UserPromptSubmit", SessionID: "s"}, now)
+		},
+	}
+	for name, clear := range clears {
+		t.Run(name, func(t *testing.T) {
+			st := state.Store{Dir: t.TempDir()}
+			clear(t, st, t2)
+			clear(t, st, t1)
+			claimWith(t, st, "s", 0, t2, 0, att(category.Done, t1))
+			if a := attentionOf(t, st, "s"); a != nil {
+				t.Fatalf("done since T1 shown after clear at T2: %+v", a)
+			}
+		})
+	}
+}

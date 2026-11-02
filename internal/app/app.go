@@ -32,7 +32,7 @@ func Apply(st state.Store, e event.Event, now time.Time) (res classify.Result, s
 		case classify.CancelAll:
 			s.Pending = nil
 			s.Attention = nil
-			s.AttentionClearedMS = now.UnixMilli()
+			raiseCleared(s, now)
 		case classify.CancelMatchingTool:
 			if s.Pending != nil && s.Pending.ToolName == e.ToolName && s.Pending.AgentID == e.AgentID {
 				s.Pending = nil
@@ -86,7 +86,7 @@ func Resolve(st state.Store, sessionID string, now time.Time) error {
 	_, err := st.Update(sessionID, func(s *state.Session) {
 		s.Pending = nil
 		s.Attention = nil
-		s.AttentionClearedMS = now.UnixMilli()
+		raiseCleared(s, now)
 	})
 	return err
 }
@@ -139,6 +139,14 @@ func MarkWaiting(st state.Store, sessionID string, seq int64, att state.Attentio
 		markAttention(s, sessionID, att)
 	})
 	return err
+}
+
+// raiseCleared records that the user acted at now. It never moves the mark
+// backwards, so a clear handled late cannot let an older event's attention in.
+func raiseCleared(s *state.Session, now time.Time) {
+	if ms := now.UnixMilli(); ms > s.AttentionClearedMS {
+		s.AttentionClearedMS = ms
+	}
 }
 
 // markAttention records att unless the user acted after the triggering event,

@@ -51,7 +51,8 @@ type Attention struct {
 }
 ```
 
-`AttentionClearedMS` records the last `CancelAll` or `Resolve`. The player sets attention after its
+`AttentionClearedMS` records the latest `CancelAll` or `Resolve`; a clear handled late never moves
+it backwards. The player sets attention after its
 delay, so without it a "done" scheduled just before the user typed would reappear after the prompt
 had already cleared it: `Claim` skips setting attention when `AttentionClearedMS > SinceMS`.
 
