@@ -108,6 +108,7 @@ Every `cnw` command this README asks you to run has a slash command with the sam
 | `/cnw:init` | `cnw init` |
 | `/cnw:voices [play ID [CATEGORY]]` | `cnw voices …` |
 | `/cnw:kokoro install [--from DIR] \| urls \| remove` | `cnw kokoro …` |
+| `/cnw:visual install \| uninstall \| critters \| preview [CATEGORY] [--critter ID]` | `cnw visual …` (macOS) |
 
 Claude Code shows the output and explains any error or FAIL/WARN line; omp shows the output as
 is. `notify`, `resolve`, `turn-end` and `hook` are what the agents themselves run, so they have
@@ -239,6 +240,49 @@ cnw kokoro remove
   espeak-ng (GPL-3.0), which pronounces words missing from the dictionary. All of it is downloaded
   from the sherpa-onnx releases to your machine; none of it ships with `cnw`.
 
+## Visual signal (macOS)
+
+Opt-in. While a session waits on you, `cnw` also shows it on screen. The signal escalates the
+longer you leave it, and clears by itself when you answer or type your next prompt:
+
+| After | You see |
+|---|---|
+| 0 s | A soft glow around the edge of every display, in the category's colour. With several sessions waiting, each edge is split into one colour per session. |
+| 60 s | A ring around the pointer with the project and what it needs (`notifier · permission`). |
+| 2 min | A critter comes in from the nearer screen edge, stops below the pointer and holds up a sign with the category and the project name. |
+
+Done, error and usage limit stop at the ring. A menu bar dot shows how many sessions are waiting;
+its menu lists them, and clicking one brings its terminal to the front (Orca, switched to the
+session's terminal; iTerm2 or Terminal.app tab; VS Code or Cursor window; or else the app). The
+overlays ignore clicks and don't appear in screen shares or recordings. With Reduce Motion on, nothing pulses or walks.
+
+The critter is one of six, a different one each time unless you pick one with `critter` under
+`[visual]` (`cnw visual critters` lists them):
+
+- `blob`: a shaded blob with sparkly eyes and a glowing antenna bulb; walks in.
+- `ghost`: a pale ghost with a wavy hem and a glowing outline; floats up and drifts across.
+- `cat`: a round cat with ears, whiskers and a swishing tail; pads in and sits.
+- `deskbot`: a glossy white robot with a dark visor and a heart light; rolls in on one wheel.
+- `tintoy`: a red and cream wind-up tin robot with a spinning key and a chest dial; waddles in.
+- `drone`: a dark drone with two rotors and a camera eye; flies in with the sign on cables.
+
+```bash
+cnw visual install                    # start it now and at every login (a LaunchAgent)
+cnw visual preview [CATEGORY]         # run the whole escalation in 12 s
+cnw visual preview --critter ghost    # ... with a given critter
+cnw visual critters                   # list the critters; * marks yours
+cnw visual uninstall
+```
+
+The first jump into Terminal or iTerm2 makes macOS ask whether `osascript` may control it. Timings,
+colours and how far each category escalates are in [Configure](#configure).
+
+One visual host serves every install. If both the Claude Code plugin and the omp extension are
+installed, they share it: after an update, the next `cnw hook` or `cnw notify` moves the LaunchAgent
+to its own binary when the one recorded there is missing or older; a newer recorded binary is left
+alone. `cnw doctor` reports whether the host is running, and says so when the LaunchAgent runs
+another install's binary or one that no longer exists.
+
 ## Configure
 
 Optional: without a config file every category plays its default clip. To customise:
@@ -264,6 +308,13 @@ extra wait after the trigger), `volume` (0.0–1.0). Unset keys inherit the defa
 top-level `volume`. A relative `sound` path is resolved against the config file's directory. On
 Windows, write `sound` paths as single-quoted TOML literal strings (`'C:\Users\me\ding.wav'`) or
 with forward slashes: `\U` inside a double-quoted string is a TOML escape.
+
+Visual signal keys (see [Visual signal (macOS)](#visual-signal-macos)):
+
+- `[visual]`: `halo_after_s` (default 60), `critter_after_s` (default 120, must be greater than
+  `halo_after_s`), `stale_after_h` (default 6: ignore sessions waiting longer, e.g. after a crash),
+  `critter` (default `"random"`, or `"blob"`, `"ghost"`, `"cat"`, `"deskbot"`, `"tintoy"`, `"drone"`).
+- Per category: `color` (`"#RRGGBB"`) and `max_rung` (1 glow, 2 ring, 3 critter).
 
 ```toml
 volume = 0.8
@@ -336,7 +387,7 @@ Code only. The extension drives `cnw` through commands any agent can use:
 
 ```text
 cnw notify CATEGORY --session ID [--cwd DIR] [--pending] [--after MS]   # --pending: cancellable prompt
-cnw resolve --session ID                                                # prompt answered: cancel its sound
+cnw resolve --session ID                                                # prompt answered: cancel its sound, clear the visual
 cnw turn-end --session ID [--cwd DIR] [--error]                         # final reply on stdin
 ```
 
@@ -386,7 +437,8 @@ and pull request. Report security issues privately through the repository's **Se
 Design and behaviour: [docs/specs/2026-10-25-notification-wrapper-design.md](docs/specs/2026-10-25-notification-wrapper-design.md);
 project announcements: [docs/specs/2026-10-27-project-announcements-design.md](docs/specs/2026-10-27-project-announcements-design.md);
 Kokoro names: [docs/specs/2026-10-29-kokoro-names-design.md](docs/specs/2026-10-29-kokoro-names-design.md);
-voice selection: [docs/specs/2026-10-29-voice-selection-design.md](docs/specs/2026-10-29-voice-selection-design.md).
+voice selection: [docs/specs/2026-10-29-voice-selection-design.md](docs/specs/2026-10-29-voice-selection-design.md);
+visual signal (macOS): [docs/specs/2026-10-31-visual-attention-design.md](docs/specs/2026-10-31-visual-attention-design.md).
 
 ## License
 

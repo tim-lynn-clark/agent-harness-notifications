@@ -8,18 +8,19 @@ plugin and an omp extension around one Go binary. User-facing behaviour is in `R
 
 | Path | What |
 |---|---|
-| `cmd/cnw/` | CLI entry points: `hook`, `notify`, `resolve`, `turn-end`, `play`, `init`, `voices`, `kokoro`, `doctor` (usage in `main.go`) |
-| `internal/` | `event` (hook payload), `classify` (event → category, no I/O), `category` (categories and defaults), `app` (applies events to state; `Claim` decides whether a scheduled sound plays), `state` (session state, event log), `config` (TOML), `audio` (players), `label` + `announce` (spoken project names, chimes), `kokoro` (opt-in Kokoro engine install, name synthesis, loudness levelling), `wav` (16-bit mono WAV) |
+| `cmd/cnw/` | CLI entry points: `hook`, `notify`, `resolve`, `turn-end`, `play`, `init`, `voices`, `kokoro`, `visual`, `doctor` (usage in `main.go`) |
+| `internal/` | `event` (hook payload), `classify` (event → category, no I/O), `category` (categories and defaults), `app` (applies events to state; `Claim` decides whether a scheduled sound plays), `state` (session state, event log), `config` (TOML), `audio` (players), `label` + `announce` (spoken project names, chimes), `kokoro` (opt-in Kokoro engine install, name synthesis, loudness levelling), `wav` (16-bit mono WAV), `jump` (finds and focuses a session's terminal), `visual` (snapshot, embedded JXA host: `host.js` (windows, glow, halo, orb, critter dispatcher) and `critters.js` (the six critters), joined into one script; LaunchAgent) |
 | `hooks/hooks.json` | Claude Code hooks; every handler runs `bin/cnw hook` async |
-| `skills/<command>/SKILL.md` | `/cnw:doctor`, `play`, `init`, `voices`, `kokoro` in Claude Code; omp's are registered in `omp/cnw.ts` (spec §8.5) |
+| `skills/<command>/SKILL.md` | `/cnw:doctor`, `play`, `init`, `voices`, `kokoro`, `visual` in Claude Code; omp's are registered in `omp/cnw.ts` (spec §8.5) |
 | `omp/cnw.ts` | omp extension; drives `cnw notify/resolve/turn-end` and registers the `/cnw:*` commands (declared in `package.json`) |
 | `bin/cnw` | POSIX sh launcher that picks `bin/<os>-<arch>/cnw` |
 | `sounds/<voice>/*.wav` | Bundled default clips, one directory per Kokoro voice (`kokoro_voice` picks one), one clip per category |
 | `docs/specs/` | Design specs: the source of truth for behaviour; update them with behaviour changes |
 | `docs/plans/` | Historical implementation plans; they predate the rename and still use the old name, so don't edit them |
-| `.github/workflows/` | `release.yml` publishes a version tag to `release`; `smoke.yml` runs the Linux and Windows end-to-end check and `gitleaks.yml` scans the full history for secrets, both on every push and pull request |
+| `.github/workflows/` | `release.yml` publishes a version tag to `release`; `smoke.yml` runs the Linux and Windows end-to-end check plus the macOS visual host check (`visual-macos`), and `gitleaks.yml` scans the full history for secrets, both on every push and pull request |
 | `.githooks/pre-commit` | Runs `gitleaks` on staged changes; enable with `git config core.hooksPath .githooks` |
 | `scripts/checkwav/` | Asserts a recorded clip is audible and levelled; the smoke workflow runs it on a spoken name |
+| `scripts/hostscript/` | Prints the joined visual host script (`host.js` + `critters.js`) for CI's `osacompile` |
 
 ## Build and test
 
@@ -85,4 +86,5 @@ claude plugin validate .
   playback through a null ALSA device. Confirmed by ear: WSL 2 (Ubuntu 24.04, WSLg, `paplay`),
   clips plus Kokoro names. Still unproven: audible sound on bare-metal Linux, Linux arm64 and
   native Windows, the `powershell.exe` WSL interop fallback, and the install on locked-down
-  Windows (AppLocker, WDAC).
+  Windows (AppLocker, WDAC). The visual signal is macOS only; `visual-macos` in `smoke.yml` runs
+  the host headlessly but nobody has checked by eye whether it renders on CI.

@@ -1,12 +1,15 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"runtime"
 	"strconv"
 	"time"
 
 	"github.com/tim-lynn-clark/agent-harness-notifications/internal/category"
+	"github.com/tim-lynn-clark/agent-harness-notifications/internal/jump"
 	"github.com/tim-lynn-clark/agent-harness-notifications/internal/state"
 )
 
@@ -22,9 +25,11 @@ func newRecord(now time.Time) state.Record {
 // schedule spawns the detached player for category c when it is enabled and
 // has a sound, waiting extra plus the category's delay_ms. seq > 0 ties the
 // sound to a pending prompt so resolving the prompt cancels it. cwd, when
-// known, lets the player announce the project and worktree. The outcome goes
-// into rec.Outcome.
-func schedule(rec *state.Record, sessionID, cwd string, seq int64, c category.ID, extra time.Duration) {
+// known, lets the player announce the project and worktree. at is when the
+// triggering event was handled; with the session's terminal (captured here,
+// inside the agent's process tree) it becomes the visual attention. The
+// outcome goes into rec.Outcome.
+func schedule(rec *state.Record, sessionID, cwd string, seq int64, c category.ID, extra time.Duration, at time.Time) {
 	cfg, _, err := loadConfig()
 	if err != nil {
 		rec.Outcome = "config: " + err.Error()
@@ -37,13 +42,21 @@ func schedule(rec *state.Record, sessionID, cwd string, seq int64, c category.ID
 	case cc.Sound == "":
 		rec.Outcome = "no-sound"
 	default:
-		err := spawnFire([]string{
+		args := []string{
 			"--session", sessionID,
 			"--seq", strconv.FormatInt(seq, 10),
 			"--category", string(c),
 			"--delay", strconv.FormatInt((extra + cc.Delay).Milliseconds(), 10),
 			"--cwd", cwd,
-		})
+			"--at", strconv.FormatInt(at.UnixMilli(), 10),
+		}
+		if runtime.GOOS == "darwin" {
+			target := jump.Detect(os.Getenv, cwd, func() string { return jump.ProcessTTY(os.Getppid(), jump.Exec) })
+			if b, err := json.Marshal(target); err == nil {
+				args = append(args, "--jump", string(b))
+			}
+		}
+		err := spawnFire(args)
 		if err != nil {
 			rec.Outcome = fmt.Sprintf("spawn: %v", err)
 		} else {
