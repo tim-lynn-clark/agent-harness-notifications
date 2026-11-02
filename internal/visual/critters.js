@@ -271,6 +271,11 @@ function step(feet, lift, half, dur) {
   loop(feet[1], 'transform.translation.y', -lift * CRITTER_K, 0, half, 'step', dur);
 }
 
+// unloop stops the keyed animations on each layer, ending a gait early.
+function unloop(layers, keys) {
+  layers.forEach((l) => keys.forEach((k) => l.removeAnimationForKey($(k))));
+}
+
 // slide moves the critter's box along keyPath (position.x or position.y).
 function slide(l, keyPath, from, to, dur, timing) {
   const a = $.CABasicAnimation.animationWithKeyPath($(keyPath));
@@ -291,8 +296,9 @@ function travelTime(dist) {
 
 // ---- the critters ---------------------------------------------------------------
 // Each builder draws into p (the figure's pen) and returns its parts: sign,
-// always() (runs from entry), gait(dur, dir) (while travelling), arrive(dir)
-// (once, on stopping) and idle() (while waiting). Reduce Motion skips all four.
+// always() (runs from entry), gait(dur, dir) (while travelling), halt() (stops
+// the gait when the entry is cut short; floaters have none), arrive(dir)
+// (once, on stopping) and idle() (while waiting). Reduce Motion skips all of these.
 
 function buildBlob(p, e) {
   const c = e.color;
@@ -335,6 +341,7 @@ function buildBlob(p, e) {
       loop(body.layer, 'transform.scale.y', 1, 0.9, 0.18, 'squash', dur);
       step(feet, 6, 0.18, dur);
     },
+    halt: () => unloop([body.layer].concat(feet), ['squash', 'step']),
     idle: () => {
       bob(all.layer, 6, 0.8);
       sway(sg, 0.05, 1.2);
@@ -425,6 +432,7 @@ function buildCat(p, e) {
       step(paws, 5, 0.22, dur);
       loop(body.layer, 'transform.translation.y', 0, -3 * CRITTER_K, 0.22, 'pad', dur);
     },
+    halt: () => unloop([body.layer].concat(paws), ['pad', 'step']),
     // Sitting down: the body settles and squashes a little.
     arrive: () => keyframes(body.layer, 'transform.scale.y', [1, 0.93, 1.02, 1], [0, 0.4, 0.75, 1], 0.6, 'sit', 0.6),
     idle: () => {
@@ -471,6 +479,10 @@ function buildDeskbot(p, e) {
     gait: (dur, dir) => {
       spin(wheel.layer, 0.6, dir, 'roll', dur);
       loop(lean.layer, 'transform.rotation.z', 0.05 * dir, 0.07 * dir, 0.3, 'tilt', dur);
+    },
+    halt: () => {
+      unloop([wheel.layer], ['roll']);
+      unloop([lean.layer], ['tilt']);
     },
     // Leaning forward as it brakes, then settling back.
     arrive: (dir) => keyframes(lean.layer, 'transform.rotation.z', [0.06 * dir, 0.16 * dir, -0.04 * dir, 0], [0, 0.35, 0.7, 1], 0.8, 'brake', 0.8),
@@ -525,6 +537,7 @@ function buildTintoy(p, e) {
       rock(0.07, 0.16, dur);
       step(legs, 5, 0.16, dur);
     },
+    halt: () => unloop([all.layer].concat(legs), ['rock', 'step']),
     idle: () => rock(0.035, 0.3),
   };
 }
@@ -664,9 +677,11 @@ function critterDepart(c, reduce) {
   const W = c.overlay.frame.w;
   const pres = c.box.presentationLayer;
   const from = pres.isNil() ? c.box.position : pres.position;
-  // Freeze any unfinished entry where it is, so it waves in place.
+  // Freeze any unfinished entry where it is, gait included, so it waves in place.
+  const entering = !c.box.animationForKey($('position.x')).isNil() || !c.box.animationForKey($('position.y')).isNil();
   c.box.removeAnimationForKey($('position.x'));
   c.box.removeAnimationForKey($('position.y'));
+  if (entering && c.parts.halt) c.parts.halt();
   noAnim(() => c.box.setPosition($.NSMakePoint(from.x, from.y)));
   const toRight = from.x >= W / 2;
   const end = toRight ? W + c.left + 40 : -c.right - 40;
