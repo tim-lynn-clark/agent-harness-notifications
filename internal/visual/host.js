@@ -43,16 +43,22 @@ function writeText(path, text) {
   $(text).writeToFileAtomicallyEncodingError($(path), true, $.NSUTF8StringEncoding, null);
 }
 
-function rgb(hex, alpha) {
+// channels splits '#RRGGBB' into red, green and blue in 0..1.
+function channels(hex) {
   const n = parseInt(hex.slice(1), 16);
-  return $.NSColor.colorWithSRGBRedGreenBlueAlpha(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, alpha);
+  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+}
+
+function rgb(hex, alpha) {
+  const c = channels(hex);
+  return $.NSColor.colorWithSRGBRedGreenBlueAlpha(c[0], c[1], c[2], alpha);
 }
 
 // cgColor is rgb as a CGColor for layers. Reading NSColor.CGColor through
 // the JXA bridge kills osascript, so it builds the CGColor directly.
 function cgColor(hex, alpha) {
-  const n = parseInt(hex.slice(1), 16);
-  return $.CGColorCreateSRGB(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, alpha);
+  const c = channels(hex);
+  return $.CGColorCreateSRGB(c[0], c[1], c[2], alpha);
 }
 
 function num(v) {
@@ -66,8 +72,28 @@ function noAnim(fn) {
   $.CATransaction.commit;
 }
 
+// guarded wraps a callback that AppKit or a timer calls, so an exception is
+// logged instead of escaping into the run loop (where it would stop a timer).
+function guarded(fn) {
+  return function () {
+    try {
+      return fn.apply(null, arguments);
+    } catch (e) {
+      console.log('cnw visual host: ' + e);
+    }
+  };
+}
+
+// timer schedules fn every (or once after) seconds in the common run-loop
+// modes, so it keeps firing while the orb's menu is open.
+function timer(seconds, repeats, fn) {
+  const t = $.NSTimer.timerWithTimeIntervalRepeatsBlock(seconds, repeats, () => fn());
+  $.NSRunLoop.mainRunLoop.addTimerForMode(t, $.NSRunLoopCommonModes);
+  return t;
+}
+
 function after(seconds, fn) {
-  $.NSTimer.scheduledTimerWithTimeIntervalRepeatsBlock(seconds, false, () => fn());
+  timer(seconds, false, guarded(fn));
 }
 
 function reduceMotion() {
@@ -263,7 +289,8 @@ function renderHalo(now) {
   }
   const others = waiting.length - 1;
   const text = top.label + ' · ' + top.category.replace(/_/g, ' ') + (others > 0 ? ' +' + others : '');
-  const key = top.color + '|' + text;
+  const reduce = reduceMotion();
+  const key = top.color + '|' + text + '|' + reduce;
   if (!halo || halo.key !== key) {
     dropHalo();
     const box = $.CALayer.layer;
@@ -277,16 +304,13 @@ function renderHalo(now) {
     const label = textLayer(text, 13, cgColor('#FFFFFF', 1), cgColor(top.color, 0.85));
     box.addSublayer(label);
     // The box has zero size; ring and label sit at fixed offsets so each frame moves only the box.
-    noAnim(() => {
-      ring.setPosition($.NSMakePoint(0, 0));
-      label.setPosition($.NSMakePoint(HALO_R + 8 + label.bounds.size.width / 2, -HALO_R));
-    });
-    if (!reduceMotion()) loop(ring, 'opacity', 1, 0.45, 0.9, 'breathe');
-    halo = { box: box, ring: ring, label: label, key: key, overlay: null };
+    noAnim(() => ring.setPosition($.NSMakePoint(0, 0)));
+    if (!reduce) loop(ring, 'opacity', 1, 0.45, 0.9, 'breathe');
+    halo = { box: box, ring: ring, label: label, key: key, overlay: null, left: null };
   }
   // The poll restarts the 60 Hz timer once the pointer moves again.
   if (followPointer() && !haloTimer) {
-    haloTimer = $.NSTimer.scheduledTimerWithTimeIntervalRepeatsBlock(1 / 60, true, () => haloFrame());
+    haloTimer = timer(1 / 60, true, haloFrame);
   }
 }
 
@@ -312,11 +336,19 @@ function followPointer() {
   lastPointer = key;
   lastMove = Date.now();
   const moved = halo.overlay !== p.o;
+  // The label sits right of the ring, or left of it where it would run off the display.
+  const w = halo.label.bounds.size.width;
+  const left = p.x + HALO_R + 8 + w > p.o.frame.w;
   noAnim(() => {
     if (moved) {
       halo.box.removeFromSuperlayer;
       p.o.root.addSublayer(halo.box);
+      halo.label.setContentsScale(p.o.frame.scale);
       halo.overlay = p.o;
+    }
+    if (left !== halo.left) {
+      halo.label.setPosition($.NSMakePoint((left ? -1 : 1) * (HALO_R + 8 + w / 2), -HALO_R));
+      halo.left = left;
     }
     halo.box.setPosition($.NSMakePoint(p.x, p.y));
   });
@@ -457,9 +489,12 @@ function registerMenuTarget() {
     name: 'CNWMenuTarget',
     protocols: ['NSMenuDelegate'],
     methods: {
-      'menuNeedsUpdate:': { types: ['void', ['id']], implementation: (menu) => fillMenu(menu) },
-      'jump:': { types: ['void', ['id']], implementation: (item) => launch(['visual', 'jump', ObjC.unwrap(item.representedObject)]) },
-      'quit:': { types: ['void', ['id']], implementation: () => quit() },
+      'menuNeedsUpdate:': { types: ['void', ['id']], implementation: guarded((menu) => fillMenu(menu)) },
+      'jump:': {
+        types: ['void', ['id']],
+        implementation: guarded((item) => launch(['visual', 'jump', ObjC.unwrap(item.representedObject)])),
+      },
+      'quit:': { types: ['void', ['id']], implementation: guarded(() => quit()) },
     },
   });
   menuTarget = $.CNWMenuTarget.alloc.init;
@@ -479,16 +514,17 @@ function renderOrb() {
   orbKey = key;
   const text = waiting.length === 0 ? '○' : waiting.length === 1 ? '●' : '● ' + waiting.length;
   const color = waiting.length ? rgb(waiting[0].color, 1) : $.NSColor.tertiaryLabelColor;
-  statusItem.button.setAttributedTitle(attributed(text, color, text.length));
+  statusItem.button.setAttributedTitle(attributed(text, color, text.length, $.NSFont.menuBarFontOfSize(0)));
 }
 
-// attributed returns text with its first len characters in color. JXA doesn't
-// bridge the NSAttributedString init methods, so it fills an empty string.
-function attributed(text, color, len) {
+// attributed returns text in font with its first len characters in color.
+// JXA doesn't bridge the NSAttributedString init methods, so it fills an
+// empty string.
+function attributed(text, color, len, font) {
   const s = $.NSMutableAttributedString.alloc.init;
   s.replaceCharactersInRangeWithString($.NSMakeRange(0, 0), $(text));
-  const attrs = $.NSDictionary.dictionaryWithObjectForKey(color, $.NSForegroundColorAttributeName);
-  s.addAttributesRange(attrs, $.NSMakeRange(0, len));
+  s.addAttributesRange($.NSDictionary.dictionaryWithObjectForKey(font, $.NSFontAttributeName), $.NSMakeRange(0, s.length));
+  s.addAttributesRange($.NSDictionary.dictionaryWithObjectForKey(color, $.NSForegroundColorAttributeName), $.NSMakeRange(0, len));
   return s;
 }
 
@@ -514,7 +550,7 @@ function fillMenu(menu) {
   for (const e of waiting) {
     const title = '● ' + e.label + ' — ' + e.category.replace(/_/g, ' ') + ' · ' + age(now - e.since);
     const it = menuItem(title, e.id ? 'jump:' : null);
-    it.setAttributedTitle(attributed(title, rgb(e.color, 1), 1));
+    it.setAttributedTitle(attributed(title, rgb(e.color, 1), 1, $.NSFont.menuFontOfSize(0)));
     if (e.id) it.setRepresentedObject($(e.id));
     else it.setEnabled(false);
     menu.addItem(it);
@@ -560,6 +596,6 @@ function run(argv) {
   registerMenuTarget();
   makeOrb();
   tick();
-  $.NSTimer.scheduledTimerWithTimeIntervalRepeatsBlock(POLL_S, true, () => tick());
+  timer(POLL_S, true, tick);
   app.run;
 }

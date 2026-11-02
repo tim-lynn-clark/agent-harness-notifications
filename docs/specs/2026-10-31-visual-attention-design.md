@@ -139,6 +139,10 @@ together under `<state dir>/visual.lock`, so the last writer always reflects the
   set of screen frames has changed, and reconciles the screen with the waiting sessions.
 - Every 5 s it touches `<state dir>/visual-host.alive` as a heartbeat.
 - On exit it removes all of its windows; overlays never outlive the host.
+- Every timer (the poll, the halo's 60 Hz timer, one-shot delays) runs in the run loop's common
+  modes, so drawing and the heartbeat continue while the orb's menu is open.
+- Timer callbacks and the menu's delegate and action methods are wrapped so an exception is
+  logged to stderr as `cnw visual host: <error>` instead of escaping into the run loop.
 
 ### 5.2 Escalation ladder
 
@@ -148,7 +152,7 @@ time has passed, capped at the session's `max_rung`:
 | Rung | Starts at | Look |
 |---|---|---|
 | 1 Aurora | `since_ms` | An inner glow about 28 px deep along every edge of every display, breathing in opacity over a 2.4 s cycle (a Core Animation animation, run by the render server). With N waiting sessions, each edge is divided along its length into N equal segments; segment *i* takes the colour of the *i*-th oldest session. |
-| 2 Halo | `+ halo_after_s` (60) | A ring around the pointer, with a label beside it: `<label> · <category>`, plus ` +N` when N other sessions are also waiting. Shown only on the pointer's display. A 60 Hz `NSTimer` updates the position, and runs only while the pointer moves: it stops after 0.5 s of stillness, and the 250 ms poll restarts it when the pointer moves again, so the halo can lag by up to about 250 ms when movement starts. Each frame moves only the halo's container layer. The label names the oldest waiting session. |
+| 2 Halo | `+ halo_after_s` (60) | A ring around the pointer, with a label beside it: `<label> · <category>`, plus ` +N` when N other sessions are also waiting. Shown only on the pointer's display. A 60 Hz `NSTimer` updates the position, and runs only while the pointer moves: it stops after 0.5 s of stillness, and the 250 ms poll restarts it when the pointer moves again, so the halo can lag by up to about 250 ms when movement starts. Each frame moves only the halo's container layer. The label names the oldest waiting session. It sits right of the ring, or left of it where it would run off the display, and renders at that display's scale. The halo is rebuilt when Reduce Motion changes. |
 | 3 Critter | `+ critter_after_s` (240) | A vector creature built from rounded `CALayer` shapes (body, eyes, feet, sign) walks in from the bottom edge of the pointer's display with a squash-and-stretch walk cycle, stops, and holds up a sign showing the label and a category glyph; it blinks now and then. On clear it waves and walks off, about 3.8 s in total (a 350 ms fade with Reduce Motion). One critter at a time, for the oldest session at rung 3; the next critter enters only after the previous one has left. |
 
 When an attention is cleared, its aurora band and halo fade within one poll interval plus about
@@ -219,10 +223,10 @@ prompt for `osascript`.
 - An `NSStatusItem` that is always present while the host runs:
   - idle: a dim hollow dot;
   - waiting: a filled dot in the oldest waiting session's colour, followed by the count when more
-    than one session is waiting. No animation.
+    than one session is waiting, in the menu bar font. No animation.
 - Menu:
   - one row per waiting session, oldest first: colour swatch, `<label> — <category> · <age>`
-    (age as `45s`, `3m`, `2h`). Clicking a row runs the jump.
+    (age as `45s`, `3m`, `2h`), in the standard menu font. Clicking a row runs the jump.
   - a separator, then *Quit visuals*.
 
 ## 7. Configuration
