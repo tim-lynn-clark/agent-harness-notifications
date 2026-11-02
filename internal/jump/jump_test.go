@@ -2,6 +2,7 @@ package jump
 
 import (
 	"errors"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -19,7 +20,7 @@ func TestDetect(t *testing.T) {
 		{"orca", map[string]string{
 			"TERM_PROGRAM": "Orca", "ORCA_TERMINAL_HANDLE": "term_1", "ORCA_WORKTREE_ID": "repo::/w",
 			"ORCA_PANE_KEY": "tab:leaf", "ORCA_CLI_BIN_DIR": "/Apps/Orca/bin", "__CFBundleIdentifier": "com.stablyai.orca",
-		}, Target{Host: HostOrca, OrcaCLI: "/Apps/Orca/bin/orca", OrcaHandle: "term_1", OrcaWorktree: "repo::/w",
+		}, Target{Host: HostOrca, OrcaCLI: filepath.Join("/Apps/Orca/bin", "orca"), OrcaHandle: "term_1", OrcaWorktree: "repo::/w",
 			OrcaPane: "tab:leaf", BundleID: "com.stablyai.orca"}},
 		{"orca wins over a nested TERM_PROGRAM", map[string]string{
 			"TERM_PROGRAM": "Apple_Terminal", "ORCA_TERMINAL_HANDLE": "term_1",
