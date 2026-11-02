@@ -267,6 +267,12 @@ stale_after_h = 2
 [categories.permission]
 color = "#112233"
 max_rung = 1
+
+[categories.done]
+clear_after_s = 0
+
+[categories.question]
+clear_after_s = 90
 `))
 	if err != nil {
 		t.Fatal(err)
@@ -274,13 +280,20 @@ max_rung = 1
 	if cfg.HaloAfter != 10*time.Second || cfg.CritterAfter != 20*time.Second || cfg.StaleAfter != 2*time.Hour {
 		t.Fatalf("thresholds: halo %s critter %s stale %s", cfg.HaloAfter, cfg.CritterAfter, cfg.StaleAfter)
 	}
-	if p := cfg.For(category.Permission); p.Color != "#112233" || p.MaxRung != 1 {
+	if p := cfg.For(category.Permission); p.Color != "#112233" || p.MaxRung != 1 || p.ClearAfter != 0 {
 		t.Fatalf("configured category: %+v", p)
 	}
-	// An unconfigured category keeps its built-in colour and rung.
-	d, _ := category.DefaultFor(category.Done)
-	if got := cfg.For(category.Done); got.Color != d.Color || got.MaxRung != d.MaxRung {
-		t.Fatalf("unconfigured category: %+v, want %s/%d", got, d.Color, d.MaxRung)
+	// An unconfigured category keeps its built-in colour, rung and timeout.
+	d, _ := category.DefaultFor(category.Error)
+	if got := cfg.For(category.Error); got.Color != d.Color || got.MaxRung != d.MaxRung || got.ClearAfter != 5*time.Minute {
+		t.Fatalf("unconfigured category: %+v, want %s/%d/5m", got, d.Color, d.MaxRung)
+	}
+	// clear_after_s = 0 turns a default timeout off; a prompt category can opt in.
+	if got := cfg.For(category.Done).ClearAfter; got != 0 {
+		t.Fatalf("done clear_after: %s, want 0", got)
+	}
+	if got := cfg.For(category.Question).ClearAfter; got != 90*time.Second {
+		t.Fatalf("question clear_after: %s, want 90s", got)
 	}
 }
 
@@ -298,6 +311,8 @@ func TestInvalidVisualValues(t *testing.T) {
 		"negative critter":            "[visual]\ncritter_after_s = -9223372037\n",
 		"critter overflows":           "[visual]\ncritter_after_s = 9223372037\n",
 		"stale overflows":             "[visual]\nstale_after_h = 2562048\n",
+		"negative clear_after":        "[categories.done]\nclear_after_s = -1\n",
+		"clear_after overflows":       "[categories.done]\nclear_after_s = 9223372037\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, _, err := Load(write(t, body)); err == nil {

@@ -22,11 +22,15 @@ const (
 // Default is a category's built-in delay, enabled flag, and visual signal
 // (visual attention spec §5.2).
 type Default struct {
-	Delay   time.Duration
-	Enabled bool
-	Color   string // #RRGGBB
-	MaxRung int    // highest escalation rung: 1 aurora, 2 halo, 3 critter
+	Delay      time.Duration
+	Enabled    bool
+	Color      string        // #RRGGBB
+	MaxRung    int           // highest escalation rung: 1 aurora, 2 halo, 3 critter
+	ClearAfter time.Duration // the visual signal ends this long after it began; 0 never
 }
+
+// passiveClear ends the visual signal of categories with nothing to answer.
+const passiveClear = 5 * time.Minute
 
 var defaults = map[ID]Default{
 	Question:       {Enabled: true, Color: "#22C3E6", MaxRung: 3},
@@ -34,10 +38,10 @@ var defaults = map[ID]Default{
 	Permission:     {Enabled: true, Color: "#F5A524", MaxRung: 3},
 	MCPInput:       {Enabled: true, Color: "#14B8A6", MaxRung: 3},
 	DoneQuestion:   {Enabled: true, Color: "#22C3E6", MaxRung: 3},
-	Done:           {Enabled: true, Color: "#3FCF6E", MaxRung: 2},
-	DoneBackground: {Enabled: false, Color: "#3FCF6E", MaxRung: 2},
-	Error:          {Enabled: true, Color: "#F04444", MaxRung: 2},
-	UsageLimit:     {Enabled: true, Color: "#E040A0", MaxRung: 2},
+	Done:           {Enabled: true, Color: "#3FCF6E", MaxRung: 2, ClearAfter: passiveClear},
+	DoneBackground: {Enabled: false, Color: "#3FCF6E", MaxRung: 2, ClearAfter: passiveClear},
+	Error:          {Enabled: true, Color: "#F04444", MaxRung: 2, ClearAfter: passiveClear},
+	UsageLimit:     {Enabled: true, Color: "#E040A0", MaxRung: 2, ClearAfter: passiveClear},
 	IdleReminder:   {Enabled: true, Color: "#F5D90A", MaxRung: 2},
 }
 

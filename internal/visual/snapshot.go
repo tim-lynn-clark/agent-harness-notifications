@@ -27,6 +27,8 @@ type Entry struct {
 	Label     string `json:"label"`
 	Color     string `json:"color"`
 	MaxRung   int    `json:"max_rung"`
+	// ClearAfterMS ends the entry's signal this long after SinceMS; 0 never.
+	ClearAfterMS int64 `json:"clear_after_ms"`
 }
 
 // Snapshot is everything the renderer needs; it never reads the config.
@@ -39,7 +41,8 @@ type Snapshot struct {
 	Waiting        []Entry `json:"waiting"`
 }
 
-// Build resolves atts against cfg, drops stale ones, and sorts oldest first.
+// Build resolves atts against cfg, drops stale and timed-out ones, and sorts
+// oldest first.
 func Build(atts []state.Attention, cfg *config.Config, now time.Time) Snapshot {
 	snap := Snapshot{
 		Version:        1,
@@ -50,13 +53,17 @@ func Build(atts []state.Attention, cfg *config.Config, now time.Time) Snapshot {
 		Waiting:        []Entry{},
 	}
 	for _, a := range atts {
-		if now.Sub(time.UnixMilli(a.SinceMS)) > cfg.StaleAfter {
+		age := now.Sub(time.UnixMilli(a.SinceMS))
+		if age > cfg.StaleAfter {
 			continue
 		}
 		c := cfg.For(category.ID(a.Category))
+		if c.ClearAfter > 0 && age > c.ClearAfter {
+			continue
+		}
 		snap.Waiting = append(snap.Waiting, Entry{
 			SessionID: a.SessionID, Category: a.Category, SinceMS: a.SinceMS,
-			Label: a.Label, Color: c.Color, MaxRung: c.MaxRung,
+			Label: a.Label, Color: c.Color, MaxRung: c.MaxRung, ClearAfterMS: c.ClearAfter.Milliseconds(),
 		})
 	}
 	sort.Slice(snap.Waiting, func(i, j int) bool {

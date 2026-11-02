@@ -275,7 +275,8 @@ cnw kokoro remove
 
 Opt-in, macOS only (see [Platform support](#platform-support)). While a session waits on you, `cnw`
 also shows it on screen. The signal escalates the longer you leave it, and clears by itself when you
-answer or type your next prompt:
+answer or type your next prompt. A finished turn, error or usage limit needs no answer, so its signal
+also ends after 5 minutes (`clear_after_s`); switching back to the session doesn't clear it:
 
 | After | You see |
 |---|---|
@@ -349,7 +350,9 @@ Visual signal keys (see [Visual signal (macOS)](#visual-signal-macos)):
 - `[visual]`: `halo_after_s` (default 60), `critter_after_s` (default 120, must be greater than
   `halo_after_s`), `stale_after_h` (default 6: ignore sessions waiting longer, e.g. after a crash),
   `critter` (default `"random"`, or `"blob"`, `"ghost"`, `"cat"`, `"deskbot"`, `"tintoy"`, `"drone"`).
-- Per category: `color` (`"#RRGGBB"`) and `max_rung` (1 glow, 2 halo, 3 critter).
+- Per category: `color` (`"#RRGGBB"`), `max_rung` (1 glow, 2 halo, 3 critter) and `clear_after_s`
+  (the signal ends on its own after this many seconds even if you haven't replied; 0 waits for
+  your reply; default 300 for `done`, `done_background`, `error` and `usage_limit`, 0 otherwise).
 
 ```toml
 volume = 0.8

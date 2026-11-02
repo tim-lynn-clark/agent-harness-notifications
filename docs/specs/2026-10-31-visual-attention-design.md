@@ -27,7 +27,8 @@ to miss and stays until the request is dealt with.
 - Windows, Linux and WSL renderers. The Go side (§4) runs everywhere; nothing consumes it there yet.
 - Clickable or dismissible overlays. Overlays are always click-through; the orb is the only
   interactive surface.
-- Manual dismissal of a waiting session. Staleness (§4.4) covers crashed sessions.
+- Manual dismissal of a waiting session. Staleness and timeouts (§4.4) cover crashed sessions and
+  finished turns.
 - Focus-mode or Do Not Disturb detection. JXA has no public API for it, so it isn't attempted.
 - User-supplied critter sprites. The critters are drawn from vector shapes only.
 - Selecting the terminal panel inside VS Code or Cursor; jump focuses the workspace window.
@@ -83,18 +84,25 @@ Attention is cleared by exactly the events that clear `Pending` today:
 | omp `cnw resolve` (sent on tool approval or plan review resolved, the `ask` tool finishing, an aborted turn, every user `input`, and session shutdown), `cnw turn-end` | always |
 
 Done, error and usage limit have no pending prompt, so their attention is cleared only by the next
-UserPromptSubmit or SessionEnd (or omp's equivalents).
+UserPromptSubmit or SessionEnd (or omp's equivalents); their visual signal times out sooner (§4.4).
 
 `ToolName` and `AgentID` are copied from the originating `Pending` when `Claim` or `MarkWaiting`
 sets attention, so
 the `CancelMatchingTool` rule still works after `Pending` has been consumed. They aren't written to
 the snapshot.
 
-### 4.4 Staleness
+### 4.4 Staleness and timeouts
 
 A session that dies without SessionEnd would otherwise wait forever. Attentions older than
 `visual.stale_after_h` (default 6) are dropped: the snapshot (§4.5) omits them when written, and
 the renderer drops them using `stale_after_ms` as time passes. The session file is left alone.
+
+Returning to a session (focusing its terminal or Orca pane) is invisible to cnw, so a finished turn
+would otherwise glow until the next prompt. Each category's `clear_after_s` ends its visual signal
+that long after `SinceMS`, the same way: the snapshot omits the entry and carries it as
+`clear_after_ms` so the renderer drops it as time passes; the attention and the session file are
+left alone. Default 300 for done, done_background, error and usage_limit; 0 (never) for the rest,
+which are waiting on an answer.
 
 ### 4.5 Snapshot
 
@@ -111,7 +119,7 @@ together under `<state dir>/visual.lock`, so the last writer always reflects the
   "critter": "random",
   "waiting": [
     {"session_id": "…", "category": "permission", "since_ms": 1793449940000,
-     "label": "notifier, specification", "color": "#F5A524", "max_rung": 3}
+     "label": "notifier, specification", "color": "#F5A524", "max_rung": 3, "clear_after_ms": 0}
   ]
 }
 ```
@@ -266,14 +274,16 @@ stale_after_h   = 6
 critter         = "random"   # or blob, ghost, cat, deskbot, tintoy, drone
 
 [categories.permission]
-color    = "#F5A524"
-max_rung = 3
+color         = "#F5A524"
+max_rung      = 3
+clear_after_s = 0
 ```
 
 Validation, consistent with the existing keys:
 
 - `color` must be `#RRGGBB`;
 - `max_rung` must be 1, 2 or 3;
+- `clear_after_s` must be at least 0;
 - `halo_after_s` must be at least 0;
 - `critter_after_s` must be greater than `halo_after_s`;
 - `stale_after_h` must be at least 1;
@@ -338,8 +348,8 @@ Go unit tests:
   `Pending` was consumed.
 - Done, error and usage limit survive PostToolUse and clear on UserPromptSubmit.
 - Replacement resets `SinceMS`; `idle_reminder` keeps category and `SinceMS`.
-- The snapshot omits stale entries, is sorted oldest first, and carries the resolved colour and
-  `max_rung`.
+- The snapshot omits stale and timed-out (`clear_after_s`) entries, is sorted oldest first, and
+  carries the resolved colour, `max_rung` and `clear_after_ms`.
 - Config validation for every `[visual]` key (including `critter`: the default `random`, each id,
   an unknown id rejected) and the per-category keys.
 - The snapshot and the preview file carry `critter`; preview flag parsing (category with a critter,
