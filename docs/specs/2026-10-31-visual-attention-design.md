@@ -54,7 +54,8 @@ type Attention struct {
 `AttentionClearedMS` records the latest `CancelAll` or `Resolve`; a clear handled late never moves
 it backwards. The player sets attention after its
 delay, so without it a "done" scheduled just before the user typed would reappear after the prompt
-had already cleared it: `Claim` skips setting attention when `AttentionClearedMS > SinceMS`.
+had already cleared it: `Claim` and `MarkWaiting` skip setting attention when
+`AttentionClearedMS > SinceMS`.
 
 ### 4.2 Set
 
@@ -84,7 +85,8 @@ Attention is cleared by exactly the events that clear `Pending` today:
 Done, error and usage limit have no pending prompt, so their attention is cleared only by the next
 UserPromptSubmit or SessionEnd (or omp's equivalents).
 
-`ToolName` and `AgentID` are copied from the originating `Pending` when `Claim` sets attention, so
+`ToolName` and `AgentID` are copied from the originating `Pending` when `Claim` or `MarkWaiting`
+sets attention, so
 the `CancelMatchingTool` rule still works after `Pending` has been consumed. They aren't written to
 the snapshot.
 
@@ -120,6 +122,10 @@ together under `<state dir>/visual.lock`, so the last writer always reflects the
 - If the config can't be loaded (a parse or range error), the snapshot is still rewritten, using the
   built-in colours, rungs and thresholds (`config.Default()`). The waiting list therefore always
   matches session state.
+- A failed rewrite never fails the hook or command that triggered it; it is logged to `events.log`
+  as event `visual` with outcome `error: …`.
+- `visual.Write` runs as `Store.OnAttention`, with the changed session's lock held, so it must
+  never take a session lock; it takes only `visual.lock` and reads session files unlocked.
 
 ## 5. Renderer: macOS visual host
 
@@ -288,7 +294,8 @@ Doctor reads the installed plist: `ProgramArguments[0]` is the binary and
 
 Go unit tests:
 
-- Attention set on play and on cooldown, never on cancel.
+- Attention set on play and on cooldown, never on cancel; set by `MarkWaiting` when the play lock
+  times out, without consuming the prompt or starting the cooldown.
 - Each row of §4.3 clears attention, including `CancelMatchingTool` matching and not matching after
   `Pending` was consumed.
 - Done, error and usage limit survive PostToolUse and clear on UserPromptSubmit.

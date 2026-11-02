@@ -269,7 +269,7 @@ not a concern.
 | `cnw play CATEGORY` | Play a category's configured sound now, ignoring delay and cooldown. For tuning the mapping. |
 | `cnw init` | Write the default config if none exists. |
 | `cnw notify CATEGORY --session ID [--cwd DIR] [--pending] [--after MS]` | Direct signal (§13). Schedules the category's sound after `MS` + `delay_ms`; `--pending` first registers it as the session's prompt so `resolve` cancels it. `--cwd` enables the project announcement (announcement design §9). |
-| `cnw resolve --session ID` | Direct signal. Clears the session's pending prompt. |
+| `cnw resolve --session ID` | Direct signal. Clears the session's pending prompt and its visual attention. |
 | `cnw turn-end --session ID [--cwd DIR] [--error]` | Direct signal. Clears the pending prompt and plays `error`, else `done_question` when the final reply on stdin passes §5.2, else `done`. `--cwd` as for `notify`. |
 | `cnw doctor` | Report: Claude Code version (≥ 2.1.288), config path and validation errors, each configured sound file's existence, audio backend found, Windows Git Bash presence, and the last 20 classified events. |
 
