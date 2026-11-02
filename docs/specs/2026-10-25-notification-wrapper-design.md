@@ -288,8 +288,10 @@ Directory: `$CNW_STATE_DIR` when set, else `<user cache dir>/cnw/state/` (`os.Us
 `$CLAUDE_PLUGIN_DATA`: Claude Code exports that only to hook processes, so `cnw doctor` run from a
 shell would read a different directory than the hooks write.
 
-- `sessions/<session_id>.json` — `{pending: {seq, category, tool_name, agent_id, created_ms} | null, last_permission_ms,
-  last_elicitation_ms, last_played_ms}`. Writes are write-temp-then-rename. Files untouched for
+- `sessions/<session_id>.json` — `{pending: {seq, category, tool_name, agent_id, created_ms} | null, next_seq, last_permission_ms,
+  last_elicitation_ms, last_played_ms, attention: {session_id, category, since_ms, label, cwd, jump,
+  tool_name, agent_id} | absent, attention_cleared_ms}` (the attention fields are the
+  [visual attention design](2026-10-31-visual-attention-design.md) §4.1). Writes are write-temp-then-rename. Files untouched for
   7 days are deleted opportunistically by `cnw hook`.
 - `play.lock` — exclusive lock serialising playback across sessions, so overlapping agents' sounds
   stay distinguishable. `cnw fire` waits at most 15 s for the lock, then drops the sound (15 s covers
@@ -303,8 +305,8 @@ shell would read a different directory than the hooks write.
 
 The plugin never puts `cnw` on `PATH`, so running it by hand needs the launcher's full path. Both
 agents instead get a slash command for each command a user runs: `/cnw:doctor`, `/cnw:play`,
-`/cnw:init`, `/cnw:voices`, `/cnw:kokoro`, taking the same arguments. `hook`, `notify`, `resolve`,
-`turn-end` and `fire` are the agents' own and get none.
+`/cnw:init`, `/cnw:voices`, `/cnw:kokoro`, `/cnw:visual`, taking the same arguments. `hook`,
+`notify`, `resolve`, `turn-end` and `fire` are the agents' own and get none.
 
 - **Claude Code:** one skill per command, `skills/<command>/SKILL.md`, named `/cnw:<command>` from
   the plugin name. They must be skills: Claude Code substitutes `${CLAUDE_PLUGIN_ROOT}` only in
@@ -320,10 +322,11 @@ agents instead get a slash command for each command a user runs: `/cnw:doctor`, 
     a usage error exits 2), Claude Code drops the whole skill and prints nothing.
   - `kokoro` is not injected, because injected commands stop after 2 minutes and `install`
     downloads about 376 MB. Its skill tells Claude to run the command with the Bash tool and a
-    10-minute timeout, pre-approved by the same `allowed-tools` rules.
+    10-minute timeout, pre-approved by the same `allowed-tools` rules. `visual`'s skill likewise
+    tells Claude to run the command once with the Bash tool, pre-approved the same way.
   - Each skill sets `enabled: false`, which Claude Code ignores and omp honours. Without it omp
     also lists them as `/skill:<command>`, which would hand the model the unexpanded text.
-- **omp:** `omp/cnw.ts` registers `cnw:<command>` for the same five with `pi.registerCommand`. It
+- **omp:** `omp/cnw.ts` registers `cnw:<command>` for the same six with `pi.registerCommand`. It
   splits the typed arguments into words (double or single quotes group words; a leading unquoted
   `~` becomes the home directory, as in a shell), runs the binary in the session's cwd, and posts
   the command line plus stdout and stderr (decoded as UTF-8) as a displayed `cnw.command` custom
@@ -422,7 +425,8 @@ Code) and cancels it with `resolve`. Events from subagents (`ctx.agent.kind === 
 | `plan_review_requested` / `plan_review_resolved` | `notify plan_approval --pending` / `resolve` |
 | `agent_end`, last assistant `stopReason: "aborted"` | `resolve` only (an interrupt is silent) |
 | `agent_end`, otherwise (skipped when `willContinue`) | `turn-end` (`--error` for `stopReason: "error"`), then a 60 s timer → `notify idle_reminder` |
-| `input`, `agent_start`, `session_shutdown` | cancel the idle timer |
+| `input`, `session_shutdown` | cancel the idle timer, then `resolve` (clears the pending prompt and the visual) |
+| `agent_start` | cancel the idle timer |
 
 Session ids come from `ctx.sessionManager.getSessionId()`. Verified live on omp 18.12.6: open
 question, open approval, quick answer, quick deny, closing question, idle reminder, and interrupt.
