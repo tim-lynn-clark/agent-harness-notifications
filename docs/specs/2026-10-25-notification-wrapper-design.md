@@ -293,7 +293,8 @@ shell would read a different directory than the hooks write.
   7 days are deleted opportunistically by `cnw hook`.
 - `play.lock` — exclusive lock serialising playback across sessions, so overlapping agents' sounds
   stay distinguishable. `cnw fire` waits at most 15 s for the lock, then drops the sound (15 s covers
-  a full clip plus spoken name; see the announcement design §5).
+  a full clip plus spoken name; see the announcement design §5); it still marks the session waiting
+  for the visual signal, as on cooldown ([visual attention design](2026-10-31-visual-attention-design.md) §4.2).
 - `events.log` — JSON Lines: timestamp, `hook_event_name`, `session_id`, `cwd`, category or
   `ignored`/`cancel`, play outcome, and `ORCA_WORKTREE_ID` / `ORCA_PANE_KEY` when present. Rotated at
   1 MiB, keeping one previous file. Message text is not logged.

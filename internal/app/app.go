@@ -124,6 +124,23 @@ func Claim(st state.Store, sessionID string, seq int64, now time.Time, cooldown 
 	return outcome, err
 }
 
+// MarkWaiting marks sessionID as waiting on the user with att when its sound
+// could not play (the play lock timed out or failed). Like Claim, for seq > 0
+// it acts only if that prompt is still current, but it neither consumes the
+// prompt nor starts the cooldown, so a later fire of the same seq still plays.
+func MarkWaiting(st state.Store, sessionID string, seq int64, att state.Attention) error {
+	_, err := st.Update(sessionID, func(s *state.Session) {
+		if seq > 0 {
+			if s.Pending == nil || s.Pending.Seq != seq {
+				return
+			}
+			att.ToolName, att.AgentID = s.Pending.ToolName, s.Pending.AgentID
+		}
+		markAttention(s, sessionID, att)
+	})
+	return err
+}
+
 // markAttention records att unless the user acted after the triggering event,
 // and lets an idle reminder keep an existing attention so its ladder goes on.
 func markAttention(s *state.Session, sessionID string, att state.Attention) {

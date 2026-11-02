@@ -351,3 +351,58 @@ func TestResolveClearsAttention(t *testing.T) {
 		t.Fatalf("got %+v", a)
 	}
 }
+
+func markWaiting(t *testing.T, st state.Store, session string, seq int64, a state.Attention) {
+	t.Helper()
+	if err := MarkWaiting(st, session, seq, a); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMarkWaitingKeepsPromptAndSetsAttention(t *testing.T) {
+	st := state.Store{Dir: t.TempDir()}
+	mustApply(t, st, perm("s", "Bash", ""), t0)
+	at := t0.Add(6 * time.Second)
+	_, seq := mustApply(t, st, prompt("s"), at)
+	markWaiting(t, st, "s", seq, att(category.Permission, at))
+	s, err := st.Load("s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Pending == nil || s.Pending.Seq != seq {
+		t.Fatalf("pending consumed: %+v", s.Pending)
+	}
+	if s.LastPlayedMS != 0 {
+		t.Fatalf("LastPlayedMS set: %d", s.LastPlayedMS)
+	}
+	if a := s.Attention; a == nil || a.Category != "permission" || a.ToolName != "Bash" || a.SessionID != "s" {
+		t.Fatalf("attention: %+v", a)
+	}
+	// A later fire of the same prompt still plays.
+	if out := claim(t, st, "s", seq, at.Add(20*time.Second), time.Minute); out != OutcomePlay {
+		t.Fatalf("claim after MarkWaiting: %s", out)
+	}
+}
+
+func TestMarkWaitingCancelledPromptSetsNothing(t *testing.T) {
+	st := state.Store{Dir: t.TempDir()}
+	mustApply(t, st, perm("s", "Bash", ""), t0)
+	at := t0.Add(6 * time.Second)
+	_, seq := mustApply(t, st, prompt("s"), at)
+	mustApply(t, st, event.Event{HookEventName: "PostToolUse", SessionID: "s", ToolName: "Bash"}, at.Add(time.Second))
+	markWaiting(t, st, "s", seq, att(category.Permission, at))
+	if a := attentionOf(t, st, "s"); a != nil {
+		t.Fatalf("got %+v", a)
+	}
+}
+
+func TestMarkWaitingLaterClearWins(t *testing.T) {
+	st := state.Store{Dir: t.TempDir()}
+	if err := Resolve(st, "s", t0.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	markWaiting(t, st, "s", 0, att(category.Done, t0))
+	if a := attentionOf(t, st, "s"); a != nil {
+		t.Fatalf("got %+v", a)
+	}
+}

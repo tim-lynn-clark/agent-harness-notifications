@@ -42,9 +42,9 @@ func spawnFire(args []string) error {
 // sequence (which may record a missing name with Kokoro or `say`), then takes
 // the play lock, claims the sound, and plays the whole sequence under the lock.
 // Recording before locking keeps the lock short. Locking before claiming
-// means a lock timeout neither consumes the prompt nor starts the cooldown,
-// and a prompt answered during the wait stays silent. No session lock is held
-// while waiting for play.lock.
+// means a lock timeout neither consumes the prompt nor starts the cooldown
+// (it only marks the session waiting), and a prompt answered during the wait
+// stays silent. No session lock is held while waiting for play.lock.
 func runFire(args []string) {
 	fs := flag.NewFlagSet("fire", flag.ContinueOnError)
 	session := fs.String("session", "", "")
@@ -87,22 +87,27 @@ func runFire(args []string) {
 		files, note = announce.Sequence(cfg.Announce, voice, st.Dir, c.Sound, l, sp)
 	}
 
-	release, ok, err := st.AcquirePlayLock(playLockWait)
-	if err != nil {
-		rec.Outcome = "lock: " + err.Error()
-		return
-	}
-	if !ok {
-		rec.Outcome = "lock-timeout"
-		return
-	}
-	defer release()
-
 	var target jump.Target
 	if *jumpJSON != "" {
 		_ = json.Unmarshal([]byte(*jumpJSON), &target)
 	}
 	att := state.Attention{Category: *cat, SinceMS: *atMS, Label: l.String(), Cwd: *cwd, Jump: target}
+
+	// A sound that cannot play still means the user is needed (visual
+	// attention spec §4.2), so both lock failures mark the session waiting.
+	release, ok, err := st.AcquirePlayLock(playLockWait)
+	if err != nil {
+		rec.Outcome = "lock: " + err.Error()
+		_ = app.MarkWaiting(st, *session, *seq, att)
+		return
+	}
+	if !ok {
+		rec.Outcome = "lock-timeout"
+		_ = app.MarkWaiting(st, *session, *seq, att)
+		return
+	}
+	defer release()
+
 	outcome, err := app.Claim(st, *session, *seq, time.Now(), cfg.Cooldown, att)
 	if err != nil {
 		rec.Outcome = "state: " + err.Error()

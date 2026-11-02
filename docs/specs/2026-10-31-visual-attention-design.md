@@ -59,6 +59,10 @@ had already cleared it: `Claim` skips setting attention when `AttentionClearedMS
 
 - Set when `app.Claim` returns `OutcomePlay` or `OutcomeCooldown`. Cooldown limits sound, not the
   fact that the user is needed. `OutcomeCancelled` never sets it.
+- Also set when `cnw fire` cannot play because the play lock timed out or failed
+  (`app.MarkWaiting`), under the same rules as cooldown: for a registered prompt only while it is
+  still current, and never when the user acted after the triggering event. The prompt stays pending
+  and the cooldown does not start, so a later fire of the same prompt still plays.
 - If the session already has an attention, the new one replaces it. `SinceMS` resets unless the new
   category is `idle_reminder`. A reminder keeps the existing category and `SinceMS`, because it
   must not restart the ladder.
