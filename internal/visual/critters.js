@@ -1,11 +1,14 @@
 // cnw visual host, rung 3: the desk critters (visual attention spec §5.2).
 // HostScript appends this file to host.js; host.js's dispatcher calls
 // critterBuild, critterArrive and critterDepart. Each critter is drawn in its
-// mockup's units (a 260 x 250 box, y down) and scaled by CRITTER_K.
+// mockup's units (a 260 x 250 box, y down) and scaled by CRITTER_K; everything
+// else about a critter in points (sign, text, glows, motion distances) is
+// scaled by CRITTER_SCALE.
 
-const CRITTER_K = 1.1; // mockup units to points
+const CRITTER_SCALE = 0.67; // the critters' size relative to the first design
+const CRITTER_K = 1.1 * CRITTER_SCALE; // mockup units to points
 const CRITTER_MARGIN = 24; // the figure and sign stay this far inside the display
-const SIGN_MAX_W = 420;
+const SIGN_MAX_W = 420 * CRITTER_SCALE;
 const GLYPH = {
   question: '?', done_question: '?', plan_approval: '✎', permission: '!', mcp_input: '⇄',
   done: '✓', done_background: '✓', error: '✕', usage_limit: '⏳', idle_reminder: '…',
@@ -124,7 +127,7 @@ function pen(layer, ox, oy, scale) {
     if (st.alpha !== undefined) l.setOpacity(st.alpha);
     if (st.glow) {
       l.setShadowColor(cgColor(st.glow[0], 1));
-      l.setShadowRadius(st.glow[1]);
+      l.setShadowRadius(st.glow[1] * CRITTER_SCALE);
       l.setShadowOpacity(st.glow[2]);
       l.setShadowOffset($.NSMakeSize(0, 0));
       if (st.fill) l.setShadowPath(path);
@@ -151,9 +154,9 @@ function pen(layer, ox, oy, scale) {
       return shape($.CGPathCreateWithRoundedRect(rect(x, y, w, h), rr, rr, null), st);
     },
     path: (d, st) => shape(svgPath(d, ox, oy), st),
-    // text centres str on (cx, cy); size is in points.
+    // text centres str on (cx, cy); size is in points at full scale.
     text: (str, cx, cy, size, hex, weight) => {
-      const l = textLine(str, size, weight, hex, SIGN_MAX_W, scale);
+      const l = textLine(str, size * CRITTER_SCALE, weight, hex, SIGN_MAX_W, scale);
       l.setPosition($.NSMakePoint((cx - ox) * k, (cy - oy) * k));
       layer.addSublayer(l);
       return l;
@@ -204,22 +207,23 @@ function glyphTitle(e) {
 function sign(p, e, o) {
   const piv = p.at(o.x, o.pivot);
   if (!o.hang) piv.rect(o.x - o.stickW / 2, o.top, o.stickW, o.bottom - o.top, o.stickW / 2, { fill: o.stick });
-  const pad = 16;
+  const S = CRITTER_SCALE;
+  const pad = 16 * S;
   const inner = SIGN_MAX_W - 2 * pad;
-  const title = textLine(o.title, 20, 0.3, o.titleColor, inner, p.scale);
-  const sub = textLine(e.label, 15, 0.23, o.subColor || '#333333', inner, p.scale);
+  const title = textLine(o.title, 20 * S, 0.3, o.titleColor, inner, p.scale);
+  const sub = textLine(e.label, 15 * S, 0.23, o.subColor || '#333333', inner, p.scale);
   const w = Math.max(title.bounds.size.width, sub.bounds.size.width, o.minW * CRITTER_K) + 2 * pad;
-  const h = title.bounds.size.height + sub.bounds.size.height + 14;
+  const h = title.bounds.size.height + sub.bounds.size.height + 14 * S;
   const board = $.CALayer.layer;
   board.setBounds($.NSMakeRect(0, 0, w, h));
   board.setBackgroundColor(paint(o.fill));
   board.setBorderColor(cgColor(e.color, 1));
-  board.setBorderWidth(3);
+  board.setBorderWidth(3 * S);
   board.setCornerRadius(o.radius === 'pill' ? h / 2 : o.radius * CRITTER_K);
   const topY = (o.top - o.pivot) * CRITTER_K;
-  board.setPosition($.NSMakePoint(0, o.hang ? topY + h / 2 : topY - h / 2 + 4));
-  title.setPosition($.NSMakePoint(w / 2, 7 + title.bounds.size.height / 2));
-  sub.setPosition($.NSMakePoint(w / 2, h - 7 - sub.bounds.size.height / 2));
+  board.setPosition($.NSMakePoint(0, o.hang ? topY + h / 2 : topY - h / 2 + 4 * S));
+  title.setPosition($.NSMakePoint(w / 2, 7 * S + title.bounds.size.height / 2));
+  sub.setPosition($.NSMakePoint(w / 2, h - 7 * S - sub.bounds.size.height / 2));
   board.addSublayer(title);
   board.addSublayer(sub);
   piv.layer.addSublayer(board);
@@ -578,7 +582,7 @@ function buildDrone(p, e) {
   };
 }
 
-const DRONE_LIFT = 83; // the drone's sign hangs about 120 pt above the bottom edge
+const DRONE_LIFT = 83 * CRITTER_SCALE; // the drone's sign hangs about 80 pt above the bottom edge
 const WAVE = 0.35; // the goodbye wave's swing either side of the sign's tilt, radians
 
 // CRITTERS: per id, the builder, how it moves, the body's centre and the
@@ -611,8 +615,9 @@ function critterBuild(id, e, o) {
   const parts = def.build(pen(fig, 0, 0, o.frame.scale), e);
   const s = parts.sign;
   // The sign swings sideways by up to reach × sin(tilt + wave) (the wave is the
-  // widest swing; every idle sway is smaller), plus the tin toy's whole-body rock.
-  const swing = s.reach * Math.sin(Math.abs(s.tilt) + WAVE) + 270 * Math.sin(def.rock || 0);
+  // widest swing; every idle sway is smaller), plus the tin toy's whole-body rock
+  // (its farthest point is within 245 mockup units of the pivot).
+  const swing = s.reach * Math.sin(Math.abs(s.tilt) + WAVE) + 245 * k * Math.sin(def.rock || 0);
   const left = Math.max((def.bodyX - def.minX) * k, def.bodyX * k - (s.cx - s.w / 2) + swing);
   const right = Math.max((def.maxX - def.bodyX) * k, s.cx + s.w / 2 - def.bodyX * k + swing);
   return { overlay: o, box: box, def: def, parts: parts, left: left, right: right, gone: false };
@@ -648,14 +653,14 @@ function critterArrive(c, px, reduce) {
     done(rise + drift, x >= sx ? 1 : -1);
     return;
   }
-  const sx = fromLeft ? -c.right - 30 : W + c.left + 30;
+  const sx = fromLeft ? -c.right - 30 * CRITTER_SCALE : W + c.left + 30 * CRITTER_SCALE;
   const dir = x >= sx ? 1 : -1;
   const dur = travelTime(x - sx);
   noAnim(() => c.box.setPosition($.NSMakePoint(sx, lift)));
   if (c.def.move === 'fly') {
     // Comes in higher and descends to its hover height.
     slide(c.box, 'position.x', sx, x, dur);
-    slide(c.box, 'position.y', lift + 140, lift, dur, 'easeOut');
+    slide(c.box, 'position.y', lift + 140 * CRITTER_SCALE, lift, dur, 'easeOut');
   } else {
     slide(c.box, 'position.x', sx, x, dur, 'easeOut');
   }
@@ -684,15 +689,15 @@ function critterDepart(c, reduce) {
   if (entering && c.parts.halt) c.parts.halt();
   noAnim(() => c.box.setPosition($.NSMakePoint(from.x, from.y)));
   const toRight = from.x >= W / 2;
-  const end = toRight ? W + c.left + 40 : -c.right - 40;
+  const end = toRight ? W + c.left + 40 * CRITTER_SCALE : -c.right - 40 * CRITTER_SCALE;
   const dur = travelTime(end - from.x);
   after(1.2, () => {
     slide(c.box, 'position.x', from.x, end, dur, 'easeIn');
     if (c.def.move === 'float') {
-      slide(c.box, 'position.y', from.y, from.y + 320, dur, 'easeIn');
+      slide(c.box, 'position.y', from.y, from.y + 320 * CRITTER_SCALE, dur, 'easeIn');
       fade(c.box, 1, 0, dur);
     } else if (c.def.move === 'fly') {
-      slide(c.box, 'position.y', from.y, from.y + 260, dur, 'easeIn');
+      slide(c.box, 'position.y', from.y, from.y + 260 * CRITTER_SCALE, dur, 'easeIn');
     }
     c.parts.gait(dur, toRight ? 1 : -1);
     after(dur + 0.1, () => c.box.removeFromSuperlayer);

@@ -189,13 +189,14 @@ appears, never the same as the previous random pick, and the choice holds for th
 | `cat` | round body and head, ears, belly, whiskers, paws, tail | pads in, then sits | tail swish, slow blink, sign sway |
 | `deskbot` | glossy white capsule head, dark visor with two glowing eyes, heart light, one wheel | rolls in (the wheel spins), leans forward as it stops | blink, heart pulse, bob, sign sway |
 | `tintoy` | red and cream tin robot (fixed enamel): rivets, porthole eyes, grille mouth, wind-up key, chest dial with a needle, accordion arm | waddles in (side-to-side rock) | key spins, needle twitches, rock |
-| `drone` | dark round body, two blurred rotor rings, a camera eye whose iris breathes, a red tally light, the sign hanging on two cables | flies in at height and descends to hover with its sign about 120 pt above the bottom edge | hover bob, rotor shimmer, sign swing, tally blink |
+| `drone` | dark round body, two blurred rotor rings, a camera eye whose iris breathes, a red tally light, the sign hanging on two cables | flies in at height and descends to hover with its sign about 80 pt above the bottom edge | hover bob, rotor shimmer, sign swing, tally blink |
 
-- **Size:** the body is about 120–130 pt tall and the whole figure, sign included, about 250 pt.
-  The sign's first line is 20 pt, its second 15 pt; text renders at the display's scale.
+- **Size:** two thirds of the first design: the body is about 80–90 pt tall and the whole figure,
+  sign included, about 170 pt. The sign's first line is about 13.4 pt, its second 10 pt; text
+  renders at the display's scale.
 - **Placement:** the body stops centred below the pointer's x, clamped so the figure and its sign
   stay at least 24 pt inside the display. Long labels are truncated with … so the sign is never
-  wider than 420 pt.
+  wider than about 281 pt.
 - **Drawing:** layers (`CAShapeLayer` paths, circles, rounded rectangles), with translucent layers
   for shading and Core Animation shadows for glows; colours are built as `CGColor`s directly. The
   idle animations are Core Animation animations, run by the render server.
