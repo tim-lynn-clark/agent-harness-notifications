@@ -1,6 +1,6 @@
 # Windows visual signal — hand-off for a Windows agent
 
-Date: 2026-11-02 · Status: hand-off brief, not a design · Source of truth for current behaviour:
+Date: 2026-11-02 (updated for cnw v0.5.1) · Status: hand-off brief, not a design · Source of truth for current behaviour:
 [`docs/specs/2026-10-31-visual-attention-design.md`](../specs/2026-10-31-visual-attention-design.md)
 (cited below as "macOS spec §N").
 
@@ -53,7 +53,7 @@ Windows) or config. Ask before registering any autostart entry on the user's acc
 | Snapshot writer | `internal/visual/snapshot.go` | `visual.Write` runs as `Store.OnAttention` (wired in `cmd/cnw/hook.go:18`) |
 | Snapshot refresh with config fallback | `cmd/cnw/visual.go` `refreshVisual` | uses `config.Default()` on config error; failures logged as event `visual` |
 | Preview/heartbeat helpers | `internal/visual/host.go` | `WritePreview`, `HostAlive` (15 s) |
-| Config keys + validation | `internal/config` | `[visual]` and per-category `color`, `max_rung` |
+| Config keys + validation | `internal/config` | `[visual]` and per-category `color`, `max_rung`, `clear_after_s` |
 | Windows file retries | `internal/state/state.go` `renameRetry`, `readFileRetry` (~0.5 s on transient sharing violations) | test: `state_windows_test.go` |
 | Hidden-console child processes | `cmd/cnw/detach_windows.go` | `CREATE_NO_WINDOW \| CREATE_NEW_PROCESS_GROUP`, `HideWindow` |
 | Windows sound | `internal/audio/audio.go` | PowerShell player (`powershell -NoProfile -NonInteractive -Command …`); WSL uses `powershell.exe` via interop |
@@ -65,6 +65,10 @@ keeps category and `SinceMS`. Cleared by `CancelAll` (UserPromptSubmit, Permissi
 ElicitationResult, SessionEnd), Stop/StopFailure (prior attention), `CancelMatchingTool` (tool +
 agent id match), omp `cnw resolve`/`turn-end`. A clear never moves `AttentionClearedMS`
 backwards; a later-arriving set older than the clear is skipped. Stale after `stale_after_h`.
+Since v0.5.1 the *visual signal* (not the attention record) also ends on its own `clear_after_s`
+after `SinceMS` for a category with a timeout: default 300 s for `done`, `done_background`, `error`
+and `usage_limit` (`passiveClear` in `internal/category/category.go`), 0 (never) for the rest
+(macOS spec §4.4).
 
 ### 2.2 The renderer-neutral contract (consume this; don't change it without a spec change)
 
@@ -80,9 +84,13 @@ All files live in the state dir (`state.DefaultDir()`: `$CNW_STATE_DIR` or
 | `critter_after_ms` | int64 | rung 3 start offset |
 | `stale_after_ms` | int64 | renderer drops entries older than this as time passes |
 | `critter` | string | `random` or `blob`/`ghost`/`cat`/`deskbot`/`tintoy`/`drone` |
-| `waiting[]` | array, oldest first (tie: `session_id`) | `session_id`, `category`, `since_ms`, `label`, `color` (`#RRGGBB`), `max_rung` (1–3) |
+| `waiting[]` | array, oldest first (tie: `session_id`) | `session_id`, `category`, `since_ms`, `label`, `color` (`#RRGGBB`), `max_rung` (1–3), `clear_after_ms` (int64; 0 = never) |
 
-No ladder state; the renderer derives rungs from `since_ms` and its own clock.
+No ladder state; the renderer derives rungs from `since_ms` and its own clock. `visual.Build`
+omits stale and timed-out entries when the snapshot is written, but the snapshot is only rewritten
+on an attention change, so the renderer must also drop, as time passes, any entry with
+`now - since_ms > stale_after_ms`, or `clear_after_ms > 0 && now - since_ms > clear_after_ms`
+(`currentWaiting` in `host.js`).
 
 **`visual-preview.json`** (`internal/visual/host.go` `Preview`): `category`, `label`, `color`,
 `max_rung`, `critter`, `started_ms`. Shown as a pretend session with a compressed ladder: rung 2 at
@@ -151,7 +159,8 @@ is Go (`internal/jump`). Jumping never clears attention.
   non-empty), osascript missing (FAIL), not installed (INFO), Automation consent (INFO), Orca CLI
   missing (WARN).
 - **Config:** `[visual] halo_after_s=60, critter_after_s=120 (> halo), stale_after_h=6 (≥1),
-  critter="random"`; per category `color="#RRGGBB"`, `max_rung` 1–3. Defaults: macOS spec §5.2.
+  critter="random"`; per category `color="#RRGGBB"`, `max_rung` 1–3, `clear_after_s` (≥ 0; 0 =
+  until the user acts). Defaults: macOS spec §5.2, `internal/category/category.go`.
 - **Commands:** `install`, `uninstall`, `preview [CATEGORY] [--critter ID]` (exit 2 on unknown;
   exit 1 + stderr, writing nothing, if heartbeat stale; `--critter` falls back to default settings
   on a config error), `critters`, `host`, `jump SESSION_ID`. Exposed via
