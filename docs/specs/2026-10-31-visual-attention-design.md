@@ -226,7 +226,7 @@ record a `Jump` that becomes part of the attention:
 
 | Host | Detected by | Stored | Jump action |
 |---|---|---|---|
-| Orca | `TERM_PROGRAM=Orca`; `ORCA_TERMINAL_HANDLE`, `ORCA_WORKTREE_ID`, `ORCA_PANE_KEY` | all three | `orca terminal switch --terminal <handle>`. If that fails (handles are runtime-issued and change when Orca restarts), `orca terminal list --worktree id:<worktree> --json` and pick the terminal whose `tabId:leafId` equals the pane key, then switch to its handle. `terminal switch` selects the terminal inside Orca but doesn't bring Orca to the front, so every path ends with `open -b <bundle id, default com.stablyai.orca>`. |
+| Orca | `ORCA_TERMINAL_HANDLE` or `ORCA_PANE_KEY` set (`TERM_PROGRAM` is not checked); also reads `ORCA_WORKTREE_ID` | all three | `orca terminal switch --terminal <handle>`. If that fails (handles are runtime-issued and change when Orca restarts), `orca terminal list --worktree id:<worktree> --json` and pick the terminal whose `tabId:leafId` equals the pane key, then switch to its handle. `terminal switch` selects the terminal inside Orca but doesn't bring Orca to the front, so every path ends with `open -b <bundle id, default com.stablyai.orca>`. |
 | iTerm2 | `TERM_PROGRAM=iTerm.app`, `ITERM_SESSION_ID` | session unique id | AppleScript: select the session with that id, activate iTerm2 |
 | Terminal.app | `TERM_PROGRAM=Apple_Terminal` | controlling tty, found by walking parent pids with `ps -o tty=` | AppleScript: select the tab whose `tty` matches, bring its window to the front, activate Terminal |
 | VS Code, Cursor | `TERM_PROGRAM=vscode` and `__CFBundleIdentifier` | bundle id, cwd | `open -b <bundle id> <cwd>` |
@@ -286,7 +286,7 @@ Validation, consistent with the existing keys:
 |---|---|
 | `cnw visual install` | Write `~/Library/LaunchAgents/com.github.tim-lynn-clark.cnw.visual.plist` (label `com.github.tim-lynn-clark.cnw.visual`, absolute path to the current binary, `KeepAlive` = `{SuccessfulExit: false}`), `launchctl bootstrap gui/<uid>`, and record the binary path in `<state dir>/visual.installed`. It waits for `<state dir>/visual-install.lock` (a blocking lock), retries `bootstrap` up to three times and reports launchctl's stderr; if a first install fails, it removes the plist it wrote. Errors on non-macOS. |
 | `cnw visual uninstall` | `launchctl bootout`, remove the plist and `visual.installed`. |
-| `cnw visual preview [category] [--critter ID]` | Write `<state dir>/visual-preview.json`, which the host shows as a waiting session with a compressed ladder (rung 2 at 3 s, rung 3 at 6 s, cleared at 12 s), using the given critter or else the configured one. Default category: permission. An unknown category or critter id is a usage error (exit 2). If the host's heartbeat is stale it says so on stderr and exits 1. |
+| `cnw visual preview [category] [--critter ID]` | Check the host's heartbeat first: if it is stale, say so on stderr, write nothing, and exit 1. Otherwise write `<state dir>/visual-preview.json`, which the host shows as a waiting session with a compressed ladder (rung 2 at 3 s, rung 3 at 6 s, cleared at 12 s), using the given critter or else the configured one. Default category: permission. An unknown category or critter id is a usage error (exit 2). A config that fails to load is an error (exit 1), except with `--critter`: then the config error is printed to stderr as a warning and the preview uses the default settings, so a user can try critters while the configured one is invalid. |
 | `cnw visual critters` | List the critter ids with a one-line description, `*` marking the configured one. |
 | `cnw visual host` | Run the renderer (§5.1); used by the LaunchAgent. |
 | `cnw visual jump <session-id>` | Run the jump (§6.2); used by the orb. Fails with the read error if the session can't be loaded, or "session is not waiting". |
@@ -316,8 +316,11 @@ Doctor reads the installed plist: `ProgramArguments[0]` is the binary and
 - **FAIL:** the plist's binary no longer exists.
 - **INFO:** the plist runs another existing cnw install.
 - **FAIL:** the plist's `CNW_STATE_DIR` differs from the directory the hooks write.
-- **FAIL:** visuals are installed, but the heartbeat in the plist's state directory is older than
-  15 s (the host isn't running).
+- **INFO:** the heartbeat is stale and `launchctl print` shows the job not running with last exit
+  code 0: the host was quit from the orb's menu (`cnw visual install` to restart).
+- **FAIL:** otherwise, visuals are installed but the heartbeat in the plist's state directory is
+  older than 15 s (the host isn't running). The line says to run `cnw visual install` or log out
+  and back in, and names `visual-host.log` only when it is non-empty.
 - **FAIL:** `osascript` is missing.
 - **INFO:** visuals not installed (`cnw visual install` to enable).
 - **INFO:** Automation consent for Terminal and iTerm2 can't be checked; macOS asks on first jump.
@@ -343,6 +346,9 @@ Go unit tests:
   critter only, unknown critter → exit 2); `cnw visual critters` lists every id and marks the
   configured one; the host script's content and name change when either `host.js` or `critters.js`
   changes.
+- Preview with no host heartbeat exits 1 and writes no preview file; `--critter` previews despite
+  an invalid configured critter. Doctor's quit detection parses `launchctl print` (stopped with
+  last exit code 0 only), and its log hint appears only for a non-empty `visual-host.log`.
 - Jump detection from environment and process ancestry, for every row of §6.1, using an injected
   environment and command runner.
 - Upgrade healing re-points the LaunchAgent only when the recorded binary is missing or older than

@@ -11,14 +11,15 @@ const usage = `usage:
   cnw hook                 handle one Claude Code hook event from stdin (used by hooks.json)
   cnw notify CATEGORY --session ID [--cwd DIR] [--pending] [--after MS]
                            schedule a category's sound; --pending lets resolve cancel it
-  cnw resolve --session ID cancel the session's pending prompt sound
+  cnw resolve --session ID
+                           prompt answered: cancel its pending sound and clear its visual signal
   cnw turn-end --session ID [--cwd DIR] [--error]
                            the agent finished; final reply on stdin picks done/done_question
   cnw play CATEGORY        play a category's configured sound now
   cnw init                 write the default config file if none exists
   cnw voices [play ID [CATEGORY]]
                            list the bundled voices, or hear one; kokoro_voice picks one
-  cnw kokoro install [--from DIR] | remove
+  cnw kokoro install [--from DIR] | urls | remove
                            opt in to spoken names in the kokoro_voice voice (downloads ~376 MB)
   cnw visual install | uninstall | critters | preview [CATEGORY] [--critter ID]
                            on-screen signal and menu bar orb for waiting sessions (macOS)

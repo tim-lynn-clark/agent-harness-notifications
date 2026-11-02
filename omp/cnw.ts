@@ -15,7 +15,7 @@ const IDLE_REMINDER_MS = 60_000;
 // The cnw commands a user runs by hand, each registered as /cnw:<name> like the plugin's
 // skills/<name> in Claude Code. hook, notify, resolve and turn-end are the agents' own.
 const USER_COMMANDS = [
-  { name: "doctor", description: "Check the cnw setup (config, clips, audio player, spoken names) and show recent sound events" },
+  { name: "doctor", description: "Check the cnw setup (config, clips, audio player, spoken names, macOS visual signal) and show recent sound events" },
   { name: "play", description: "Play a category's configured sound: /cnw:play CATEGORY" },
   { name: "init", description: "Write the default cnw config file if none exists" },
   { name: "voices", description: "List the bundled voices, or hear one: /cnw:voices [play ID [CATEGORY]]" },

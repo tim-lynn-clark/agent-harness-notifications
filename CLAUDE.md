@@ -2,7 +2,9 @@
 
 `cnw` plays a distinct sound for each kind of coding-agent attention request (question, plan
 approval, permission, MCP input, done, error, usage limit, idle reminder). It ships as a Claude Code
-plugin and an omp extension around one Go binary. User-facing behaviour is in `README.md`.
+plugin and an omp extension around one Go binary. On macOS it can also show waiting sessions on
+screen (edge glow, pointer halo, desk critter, menu bar orb; opt-in with `cnw visual install`).
+User-facing behaviour is in `README.md`.
 
 ## Where things are
 
@@ -79,12 +81,17 @@ claude plugin validate .
   - Design: `docs/specs/2026-10-29-kokoro-names-design.md`,
     `docs/specs/2026-10-29-voice-selection-design.md`.
 
-## Open questions (as of 2026-10-31)
+## Open questions (as of 2026-11-02)
 
 - **Platforms.** `.github/workflows/smoke.yml` covers Linux and Windows on every push and pull
   request: build, Kokoro install, a recorded name checked by `scripts/checkwav`, and on Linux
   playback through a null ALSA device. Confirmed by ear: WSL 2 (Ubuntu 24.04, WSLg, `paplay`),
   clips plus Kokoro names. Still unproven: audible sound on bare-metal Linux, Linux arm64 and
   native Windows, the `powershell.exe` WSL interop fallback, and the install on locked-down
-  Windows (AppLocker, WDAC). The visual signal is macOS only; `visual-macos` in `smoke.yml` runs
-  the host headlessly but nobody has checked by eye whether it renders on CI.
+  Windows (AppLocker, WDAC).
+- **Visual signal.** macOS only. Verified end to end by hand on 2026-11-02 on Apple silicon with
+  one display (hooks, omp signals, every rung, orb, jump, quit, upgrade heal); `visual-macos` in
+  `smoke.yml` runs the host headlessly on every push. Unknown: Intel Macs, several displays,
+  legibility of the critter's sign on Retina displays. Not implemented: Windows and Linux visuals
+  (`cnw visual` prints `only macOS is supported so far`); a Windows version is planned in
+  `docs/plans/2026-11-02-windows-visual-handoff.md`.
