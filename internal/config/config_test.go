@@ -307,6 +307,26 @@ func TestInvalidVisualValues(t *testing.T) {
 	}
 }
 
+func TestCritterSetting(t *testing.T) {
+	if d := Default(); d.Critter != "random" || d.CritterAfter != 120*time.Second || d.HaloAfter != 60*time.Second {
+		t.Fatalf("defaults: critter %q after %s, halo %s", d.Critter, d.CritterAfter, d.HaloAfter)
+	}
+	for _, id := range []string{"random", "blob", "ghost", "cat", "deskbot", "tintoy", "drone"} {
+		cfg, _, err := Load(write(t, "[visual]\ncritter = \""+id+"\"\n"))
+		if err != nil {
+			t.Fatalf("%s: %v", id, err)
+		}
+		if cfg.Critter != id {
+			t.Fatalf("critter %q, want %q", cfg.Critter, id)
+		}
+	}
+	_, _, err := Load(write(t, "[visual]\ncritter = \"robot\"\n"))
+	want := `visual.critter "robot" is not one of: random, blob, ghost, cat, deskbot, tintoy, drone`
+	if err == nil || err.Error() != want {
+		t.Fatalf("got %v, want %s", err, want)
+	}
+}
+
 func TestVisualBoundariesAreAccepted(t *testing.T) {
 	cfg, _, err := Load(write(t, `
 [visual]

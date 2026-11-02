@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -29,9 +30,42 @@ const (
 	DefaultVoice        = "Matilda (Premium)"
 	DefaultKokoroVoice  = "af_heart"
 	DefaultHaloAfter    = 60 * time.Second
-	DefaultCritterAfter = 240 * time.Second
+	DefaultCritterAfter = 120 * time.Second
 	DefaultStaleAfter   = 6 * time.Hour
+	DefaultCritter      = "random"
 )
+
+// Critter is one value of [visual] critter: the desk critter's look.
+type Critter struct {
+	ID          string
+	Description string
+}
+
+// Critters lists every [visual] critter value, "random" first; it is the one
+// source of truth for the ids (visual attention spec §5.2).
+var Critters = []Critter{
+	{"random", "a different one of the six each time a critter appears"},
+	{"blob", "shaded blob with sparkly eyes and a glowing antenna bulb; walks in"},
+	{"ghost", "pale ghost with a wavy hem, glowing outline; floats up and drifts in"},
+	{"cat", "round cat with ears, whiskers and a swishing tail; pads in and sits"},
+	{"deskbot", "glossy white capsule robot with a visor and heart light; rolls in"},
+	{"tintoy", "red and cream tin robot with a wind-up key and chest dial; waddles in"},
+	{"drone", "dark round drone with rotors and a camera eye; flies in, sign on cables"},
+}
+
+// CritterIDs returns the ids of Critters in order.
+func CritterIDs() []string {
+	ids := make([]string, len(Critters))
+	for i, c := range Critters {
+		ids[i] = c.ID
+	}
+	return ids
+}
+
+// ValidCritter reports whether id is one of Critters.
+func ValidCritter(id string) bool {
+	return slices.Contains(CritterIDs(), id)
+}
 
 type categoryFile struct {
 	Sound   string   `toml:"sound"`
@@ -43,9 +77,10 @@ type categoryFile struct {
 }
 
 type visualFile struct {
-	HaloAfterS    *int `toml:"halo_after_s"`
-	CritterAfterS *int `toml:"critter_after_s"`
-	StaleAfterH   *int `toml:"stale_after_h"`
+	HaloAfterS    *int    `toml:"halo_after_s"`
+	CritterAfterS *int    `toml:"critter_after_s"`
+	StaleAfterH   *int    `toml:"stale_after_h"`
+	Critter       *string `toml:"critter"`
 }
 
 type file struct {
@@ -91,6 +126,9 @@ type Config struct {
 	HaloAfter    time.Duration
 	CritterAfter time.Duration
 	StaleAfter   time.Duration
+	// Critter is the desk critter's look, one of Critters' ids ("random"
+	// picks one per appearance).
+	Critter string
 	// BundledDir holds the default clips, one directory per voice with one
 	// <category>.wav per category, used for every category without a
 	// configured sound. "" disables them.
@@ -134,6 +172,7 @@ func Default() *Config {
 		HaloAfter:    DefaultHaloAfter,
 		CritterAfter: DefaultCritterAfter,
 		StaleAfter:   DefaultStaleAfter,
+		Critter:      DefaultCritter,
 		categories:   map[category.ID]categoryFile{},
 		home:         home,
 	}
@@ -224,6 +263,12 @@ func Load(path string) (cfg *Config, warnings []string, err error) {
 		if cfg.StaleAfter, err = duration("visual.stale_after_h", *v, time.Hour); err != nil {
 			return nil, warnings, err
 		}
+	}
+	if v := f.Visual.Critter; v != nil {
+		if !ValidCritter(*v) {
+			return nil, warnings, fmt.Errorf("visual.critter %q is not one of: %s", *v, strings.Join(CritterIDs(), ", "))
+		}
+		cfg.Critter = *v
 	}
 
 	names := make([]string, 0, len(f.Categories))
@@ -343,10 +388,12 @@ voice = "Matilda (Premium)"
 # Visual signal on macOS after ` + "`cnw visual install`" + `: a glow around the screen
 # edge, then a halo around the pointer, then a desk critter, while a session
 # waits on you. Per category: color = "#RRGGBB", max_rung = 1 (glow), 2 (halo)
-# or 3 (critter).
+# or 3 (critter). critter = "random" (a different one each time), "blob",
+# "ghost", "cat", "deskbot", "tintoy" or "drone"; list them: cnw visual critters
 # [visual]
 # halo_after_s = 60
-# critter_after_s = 240
+# critter_after_s = 120
+# critter = "random"
 # stale_after_h = 6
 
 # [categories.question]

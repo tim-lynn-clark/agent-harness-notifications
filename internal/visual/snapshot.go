@@ -35,6 +35,7 @@ type Snapshot struct {
 	HaloAfterMS    int64   `json:"halo_after_ms"`
 	CritterAfterMS int64   `json:"critter_after_ms"`
 	StaleAfterMS   int64   `json:"stale_after_ms"`
+	Critter        string  `json:"critter"` // a config.Critters id; "random" picks per appearance
 	Waiting        []Entry `json:"waiting"`
 }
 
@@ -45,6 +46,7 @@ func Build(atts []state.Attention, cfg *config.Config, now time.Time) Snapshot {
 		HaloAfterMS:    cfg.HaloAfter.Milliseconds(),
 		CritterAfterMS: cfg.CritterAfter.Milliseconds(),
 		StaleAfterMS:   cfg.StaleAfter.Milliseconds(),
+		Critter:        cfg.Critter,
 		Waiting:        []Entry{},
 	}
 	for _, a := range atts {

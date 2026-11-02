@@ -81,8 +81,8 @@ func TestWriteReflectsClearedSessions(t *testing.T) {
 func TestBuildWithDefaults(t *testing.T) {
 	snap := Build([]state.Attention{{SessionID: "s", Category: "usage_limit", SinceMS: t0.UnixMilli(), Label: "notifier"}},
 		config.Default(), t0)
-	if snap.HaloAfterMS != 60000 || snap.CritterAfterMS != 240000 {
-		t.Fatalf("thresholds: halo %d critter %d", snap.HaloAfterMS, snap.CritterAfterMS)
+	if snap.HaloAfterMS != 60000 || snap.CritterAfterMS != 120000 || snap.Critter != "random" {
+		t.Fatalf("thresholds: halo %d critter %d %q", snap.HaloAfterMS, snap.CritterAfterMS, snap.Critter)
 	}
 	d, _ := category.DefaultFor(category.UsageLimit)
 	if len(snap.Waiting) != 1 {
@@ -90,5 +90,21 @@ func TestBuildWithDefaults(t *testing.T) {
 	}
 	if w := snap.Waiting[0]; w.Label != "notifier" || w.Color != d.Color || w.MaxRung != d.MaxRung || d.Color == "" || d.MaxRung == 0 {
 		t.Fatalf("entry %+v, want label notifier, %s, rung %d", w, d.Color, d.MaxRung)
+	}
+}
+
+func TestSnapshotCarriesTheCritter(t *testing.T) {
+	cfg := config.Default()
+	cfg.Critter = "drone"
+	data, err := json.Marshal(Build(nil, cfg, t0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["critter"] != "drone" {
+		t.Fatalf("critter %v in %s", got["critter"], data)
 	}
 }
