@@ -39,9 +39,8 @@ before then stays silent.
 ## Platform support
 
 Binaries are built for macOS (Apple silicon and Intel), Linux (x64 and arm64) and Windows (x64).
-On any other platform the launcher exits quietly: no sound and no message. On Windows on ARM, a
-native arm64 Git Bash gets that quiet exit; an x64 Git Bash under emulation reports `x86_64` and
-runs the x64 build (untested).
+On any other platform the launcher exits quietly: no sound and no message. Windows on ARM runs Git
+Bash under x64 emulation, so the launcher runs the x64 build (untested).
 
 | Feature | macOS | Linux | Windows (Git Bash) | WSL 2 |
 |---|---|---|---|---|
@@ -59,9 +58,9 @@ runs the x64 build (untested).
 
 The visual signal, the orb and jump are **macOS only for now**. On Linux, Windows and WSL,
 `cnw visual` prints `cnw visual: only macOS is supported so far`, and the `[visual]` keys do
-nothing. They are still validated, though: an invalid value is a config error, and a config error
-silences every sound. Sessions still record that they are waiting, which is harmless. A Windows version is
-planned: see [the Windows visual handoff](docs/plans/2026-11-02-windows-visual-handoff.md).
+nothing; sessions still record that they are waiting, which is harmless. The keys are still
+validated, though: an invalid value is a config error, and a config error silences every sound. A
+Windows version is planned: see [the Windows visual handoff](docs/plans/2026-11-02-windows-visual-handoff.md).
 
 ## Install
 

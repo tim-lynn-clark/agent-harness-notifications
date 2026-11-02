@@ -387,7 +387,8 @@ voice = "Matilda (Premium)"
 # "agent-harness-notifications" = "notifier"
 
 # Visual signal, macOS only (elsewhere the keys do nothing but are still
-# validated: an invalid value is a config error, which silences every sound), after ` + "`cnw visual install`" + `:
+# validated: an invalid value is a config error, which silences every sound),
+# after ` + "`cnw visual install`" + `:
 # a glow around the screen edge, then a halo around the pointer, then a desk
 # critter, while a session waits on you. Per category: color = "#RRGGBB",
 # max_rung = 1 (glow), 2 (halo) or 3 (critter). critter = "random" (a different
