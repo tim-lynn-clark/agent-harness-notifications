@@ -19,23 +19,26 @@ const (
 	IdleReminder   ID = "idle_reminder"
 )
 
-// Default is a category's built-in delay and enabled flag.
+// Default is a category's built-in delay, enabled flag, and visual signal
+// (visual attention spec §5.2).
 type Default struct {
 	Delay   time.Duration
 	Enabled bool
+	Color   string // #RRGGBB
+	MaxRung int    // highest escalation rung: 1 aurora, 2 halo, 3 critter
 }
 
 var defaults = map[ID]Default{
-	Question:       {Enabled: true},
-	PlanApproval:   {Enabled: true},
-	Permission:     {Enabled: true},
-	MCPInput:       {Enabled: true},
-	DoneQuestion:   {Enabled: true},
-	Done:           {Enabled: true},
-	DoneBackground: {Enabled: false},
-	Error:          {Enabled: true},
-	UsageLimit:     {Enabled: true},
-	IdleReminder:   {Enabled: true},
+	Question:       {Enabled: true, Color: "#22C3E6", MaxRung: 3},
+	PlanApproval:   {Enabled: true, Color: "#9B6BFF", MaxRung: 3},
+	Permission:     {Enabled: true, Color: "#F5A524", MaxRung: 3},
+	MCPInput:       {Enabled: true, Color: "#14B8A6", MaxRung: 3},
+	DoneQuestion:   {Enabled: true, Color: "#22C3E6", MaxRung: 3},
+	Done:           {Enabled: true, Color: "#3FCF6E", MaxRung: 2},
+	DoneBackground: {Enabled: false, Color: "#3FCF6E", MaxRung: 2},
+	Error:          {Enabled: true, Color: "#F04444", MaxRung: 2},
+	UsageLimit:     {Enabled: true, Color: "#E040A0", MaxRung: 2},
+	IdleReminder:   {Enabled: true, Color: "#F5D90A", MaxRung: 2},
 }
 
 // All returns every category in spec order.

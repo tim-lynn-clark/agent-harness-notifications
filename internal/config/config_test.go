@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -253,5 +254,107 @@ func TestAnnounceInvalidValues(t *testing.T) {
 				t.Fatal("expected error")
 			}
 		})
+	}
+}
+
+func TestVisualSettings(t *testing.T) {
+	cfg, _, err := Load(write(t, `
+[visual]
+halo_after_s = 10
+critter_after_s = 20
+stale_after_h = 2
+
+[categories.permission]
+color = "#112233"
+max_rung = 1
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.HaloAfter != 10*time.Second || cfg.CritterAfter != 20*time.Second || cfg.StaleAfter != 2*time.Hour {
+		t.Fatalf("thresholds: halo %s critter %s stale %s", cfg.HaloAfter, cfg.CritterAfter, cfg.StaleAfter)
+	}
+	if p := cfg.For(category.Permission); p.Color != "#112233" || p.MaxRung != 1 {
+		t.Fatalf("configured category: %+v", p)
+	}
+	// An unconfigured category keeps its built-in colour and rung.
+	d, _ := category.DefaultFor(category.Done)
+	if got := cfg.For(category.Done); got.Color != d.Color || got.MaxRung != d.MaxRung {
+		t.Fatalf("unconfigured category: %+v, want %s/%d", got, d.Color, d.MaxRung)
+	}
+}
+
+func TestInvalidVisualValues(t *testing.T) {
+	for name, body := range map[string]string{
+		"negative halo":               "[visual]\nhalo_after_s = -1\n",
+		"critter equals halo":         "[visual]\nhalo_after_s = 60\ncritter_after_s = 60\n",
+		"critter before default halo": "[visual]\ncritter_after_s = 30\n",
+		"stale under an hour":         "[visual]\nstale_after_h = 0\n",
+		"colour name":                 "[categories.done]\ncolor = \"green\"\n",
+		"short colour":                "[categories.done]\ncolor = \"#FFF\"\n",
+		"rung zero":                   "[categories.done]\nmax_rung = 0\n",
+		"rung four":                   "[categories.done]\nmax_rung = 4\n",
+		"halo overflows":              "[visual]\nhalo_after_s = 9223372037\n",
+		"negative critter":            "[visual]\ncritter_after_s = -9223372037\n",
+		"critter overflows":           "[visual]\ncritter_after_s = 9223372037\n",
+		"stale overflows":             "[visual]\nstale_after_h = 2562048\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, _, err := Load(write(t, body)); err == nil {
+				t.Fatal("want an error")
+			}
+		})
+	}
+}
+
+func TestCritterSetting(t *testing.T) {
+	if d := Default(); d.Critter != "random" || d.CritterAfter != 120*time.Second || d.HaloAfter != 60*time.Second {
+		t.Fatalf("defaults: critter %q after %s, halo %s", d.Critter, d.CritterAfter, d.HaloAfter)
+	}
+	for _, id := range []string{"random", "blob", "ghost", "cat", "deskbot", "tintoy", "drone"} {
+		cfg, _, err := Load(write(t, "[visual]\ncritter = \""+id+"\"\n"))
+		if err != nil {
+			t.Fatalf("%s: %v", id, err)
+		}
+		if cfg.Critter != id {
+			t.Fatalf("critter %q, want %q", cfg.Critter, id)
+		}
+	}
+	_, _, err := Load(write(t, "[visual]\ncritter = \"robot\"\n"))
+	want := `visual.critter "robot" is not one of: random, blob, ghost, cat, deskbot, tintoy, drone`
+	if err == nil || err.Error() != want {
+		t.Fatalf("got %v, want %s", err, want)
+	}
+}
+
+func TestVisualBoundariesAreAccepted(t *testing.T) {
+	cfg, _, err := Load(write(t, `
+[visual]
+halo_after_s = 0
+critter_after_s = 9223372036
+stale_after_h = 1
+
+[categories.done]
+color = "#a1b2c3"
+max_rung = 3
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.HaloAfter != 0 || cfg.CritterAfter != 9223372036*time.Second || cfg.StaleAfter != time.Hour {
+		t.Fatalf("thresholds: halo %s critter %s stale %s", cfg.HaloAfter, cfg.CritterAfter, cfg.StaleAfter)
+	}
+	if d := cfg.For(category.Done); d.Color != "#a1b2c3" || d.MaxRung != 3 {
+		t.Fatalf("done: %+v", d)
+	}
+}
+
+func TestDefaultMatchesLoadOfMissingFile(t *testing.T) {
+	loaded, _, err := Load(filepath.Join(t.TempDir(), "missing.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := Default(); !reflect.DeepEqual(d, loaded) {
+		t.Fatalf("Default() %+v differs from Load %+v", d, loaded)
 	}
 }

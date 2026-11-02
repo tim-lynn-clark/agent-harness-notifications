@@ -2,24 +2,27 @@
 
 `cnw` plays a distinct sound for each kind of coding-agent attention request (question, plan
 approval, permission, MCP input, done, error, usage limit, idle reminder). It ships as a Claude Code
-plugin and an omp extension around one Go binary. User-facing behaviour is in `README.md`.
+plugin and an omp extension around one Go binary. On macOS it can also show waiting sessions on
+screen (edge glow, pointer halo, desk critter, menu bar orb; opt-in with `cnw visual install`).
+User-facing behaviour is in `README.md`.
 
 ## Where things are
 
 | Path | What |
 |---|---|
-| `cmd/cnw/` | CLI entry points: `hook`, `notify`, `resolve`, `turn-end`, `play`, `init`, `voices`, `kokoro`, `doctor` (usage in `main.go`) |
-| `internal/` | `event` (hook payload), `classify` (event → category, no I/O), `category` (categories and defaults), `app` (applies events to state; `Claim` decides whether a scheduled sound plays), `state` (session state, event log), `config` (TOML), `audio` (players), `label` + `announce` (spoken project names, chimes), `kokoro` (opt-in Kokoro engine install, name synthesis, loudness levelling), `wav` (16-bit mono WAV) |
+| `cmd/cnw/` | CLI entry points: `hook`, `notify`, `resolve`, `turn-end`, `play`, `init`, `voices`, `kokoro`, `visual`, `doctor` (usage in `main.go`) |
+| `internal/` | `event` (hook payload), `classify` (event → category, no I/O), `category` (categories and defaults), `app` (applies events to state; `Claim` decides whether a scheduled sound plays), `state` (session state, event log), `config` (TOML), `audio` (players), `label` + `announce` (spoken project names, chimes), `kokoro` (opt-in Kokoro engine install, name synthesis, loudness levelling), `wav` (16-bit mono WAV), `jump` (finds and focuses a session's terminal), `visual` (snapshot, embedded JXA host: `host.js` (windows, glow, halo, orb, critter dispatcher) and `critters.js` (the six critters), joined into one script; LaunchAgent) |
 | `hooks/hooks.json` | Claude Code hooks; every handler runs `bin/cnw hook` async |
-| `skills/<command>/SKILL.md` | `/cnw:doctor`, `play`, `init`, `voices`, `kokoro` in Claude Code; omp's are registered in `omp/cnw.ts` (spec §8.5) |
+| `skills/<command>/SKILL.md` | `/cnw:doctor`, `play`, `init`, `voices`, `kokoro`, `visual` in Claude Code; omp's are registered in `omp/cnw.ts` (spec §8.5) |
 | `omp/cnw.ts` | omp extension; drives `cnw notify/resolve/turn-end` and registers the `/cnw:*` commands (declared in `package.json`) |
 | `bin/cnw` | POSIX sh launcher that picks `bin/<os>-<arch>/cnw` |
 | `sounds/<voice>/*.wav` | Bundled default clips, one directory per Kokoro voice (`kokoro_voice` picks one), one clip per category |
 | `docs/specs/` | Design specs: the source of truth for behaviour; update them with behaviour changes |
 | `docs/plans/` | Historical implementation plans; they predate the rename and still use the old name, so don't edit them |
-| `.github/workflows/` | `release.yml` publishes a version tag to `release`; `smoke.yml` runs the Linux and Windows end-to-end check and `gitleaks.yml` scans the full history for secrets, both on every push and pull request |
+| `.github/workflows/` | `release.yml` publishes a version tag to `release`; `smoke.yml` runs the Linux and Windows end-to-end check plus the macOS visual host check (`visual-macos`), and `gitleaks.yml` scans the full history for secrets, both on every push and pull request |
 | `.githooks/pre-commit` | Runs `gitleaks` on staged changes; enable with `git config core.hooksPath .githooks` |
 | `scripts/checkwav/` | Asserts a recorded clip is audible and levelled; the smoke workflow runs it on a spoken name |
+| `scripts/hostscript/` | Prints the joined visual host script (`host.js` + `critters.js`) for CI's `osacompile` |
 
 ## Build and test
 
@@ -78,7 +81,7 @@ claude plugin validate .
   - Design: `docs/specs/2026-10-29-kokoro-names-design.md`,
     `docs/specs/2026-10-29-voice-selection-design.md`.
 
-## Open questions (as of 2026-10-31)
+## Open questions (as of 2026-11-02)
 
 - **Platforms.** `.github/workflows/smoke.yml` covers Linux and Windows on every push and pull
   request: build, Kokoro install, a recorded name checked by `scripts/checkwav`, and on Linux
@@ -86,3 +89,9 @@ claude plugin validate .
   clips plus Kokoro names. Still unproven: audible sound on bare-metal Linux, Linux arm64 and
   native Windows, the `powershell.exe` WSL interop fallback, and the install on locked-down
   Windows (AppLocker, WDAC).
+- **Visual signal.** macOS only. Verified end to end by hand on 2026-11-02 on Apple silicon with
+  one display (hooks, omp signals, every rung, orb, jump, quit, upgrade heal); `visual-macos` in
+  `smoke.yml` runs the host headlessly on every push. Unknown: Intel Macs, several displays,
+  legibility of the critter's sign on Retina displays. Not implemented: Windows and Linux visuals
+  (`cnw visual` prints `only macOS is supported so far`); a Windows version is planned in
+  `docs/plans/2026-11-02-windows-visual-handoff.md`.

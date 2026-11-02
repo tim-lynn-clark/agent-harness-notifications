@@ -5,9 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -21,18 +24,63 @@ import (
 
 // Built-in values for top-level keys.
 const (
-	DefaultVolume      = 1.0
-	DefaultCooldown    = 1500 * time.Millisecond
-	DefaultAnnounce    = announce.ModeName
-	DefaultVoice       = "Matilda (Premium)"
-	DefaultKokoroVoice = "af_heart"
+	DefaultVolume       = 1.0
+	DefaultCooldown     = 1500 * time.Millisecond
+	DefaultAnnounce     = announce.ModeName
+	DefaultVoice        = "Matilda (Premium)"
+	DefaultKokoroVoice  = "af_heart"
+	DefaultHaloAfter    = 60 * time.Second
+	DefaultCritterAfter = 120 * time.Second
+	DefaultStaleAfter   = 6 * time.Hour
+	DefaultCritter      = "random"
 )
+
+// Critter is one value of [visual] critter: the desk critter's look.
+type Critter struct {
+	ID          string
+	Description string
+}
+
+// Critters lists every [visual] critter value, "random" first; it is the one
+// source of truth for the ids (visual attention spec §5.2).
+var Critters = []Critter{
+	{"random", "a different one of the six each time a critter appears"},
+	{"blob", "shaded blob with sparkly eyes and a glowing antenna bulb; walks in"},
+	{"ghost", "pale ghost with a wavy hem, glowing outline; floats up and drifts in"},
+	{"cat", "round cat with ears, whiskers and a swishing tail; pads in and sits"},
+	{"deskbot", "glossy white capsule robot with a visor and heart light; rolls in"},
+	{"tintoy", "red and cream tin robot with a wind-up key and chest dial; waddles in"},
+	{"drone", "dark round drone with rotors and a camera eye; flies in, sign on cables"},
+}
+
+// CritterIDs returns the ids of Critters in order.
+func CritterIDs() []string {
+	ids := make([]string, len(Critters))
+	for i, c := range Critters {
+		ids[i] = c.ID
+	}
+	return ids
+}
+
+// ValidCritter reports whether id is one of Critters.
+func ValidCritter(id string) bool {
+	return slices.Contains(CritterIDs(), id)
+}
 
 type categoryFile struct {
 	Sound   string   `toml:"sound"`
 	Enabled *bool    `toml:"enabled"`
 	DelayMS *int     `toml:"delay_ms"`
 	Volume  *float64 `toml:"volume"`
+	Color   *string  `toml:"color"`
+	MaxRung *int     `toml:"max_rung"`
+}
+
+type visualFile struct {
+	HaloAfterS    *int    `toml:"halo_after_s"`
+	CritterAfterS *int    `toml:"critter_after_s"`
+	StaleAfterH   *int    `toml:"stale_after_h"`
+	Critter       *string `toml:"critter"`
 }
 
 type file struct {
@@ -43,6 +91,7 @@ type file struct {
 	KokoroVoice *string                 `toml:"kokoro_voice"`
 	Names       map[string]string       `toml:"names"`
 	Categories  map[string]categoryFile `toml:"categories"`
+	Visual      visualFile              `toml:"visual"`
 }
 
 // Category is one category's fully resolved settings.
@@ -52,6 +101,8 @@ type Category struct {
 	Enabled bool
 	Delay   time.Duration
 	Volume  float64
+	Color   string // #RRGGBB of the visual signal
+	MaxRung int    // highest visual rung, 1-3
 }
 
 // Config is a loaded, validated configuration.
@@ -69,6 +120,15 @@ type Config struct {
 	KokoroVoice string
 	// Names maps a project or worktree name to what is spoken instead.
 	Names map[string]string
+	// HaloAfter and CritterAfter are when the visual signal escalates to the
+	// pointer halo and the desk critter; StaleAfter drops attentions from
+	// sessions that died without ending (visual attention spec §4.4, §5.2).
+	HaloAfter    time.Duration
+	CritterAfter time.Duration
+	StaleAfter   time.Duration
+	// Critter is the desk critter's look, one of Critters' ids ("random"
+	// picks one per appearance).
+	Critter string
 	// BundledDir holds the default clips, one directory per voice with one
 	// <category>.wav per category, used for every category without a
 	// configured sound. "" disables them.
@@ -97,22 +157,33 @@ func PathFor(goos string, getenv func(string) string, home string) string {
 	return filepath.Join(home, ".config", "cnw", "config.toml")
 }
 
+var hexColor = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
+
+// Default returns the built-in configuration, the one a missing file yields.
+func Default() *Config {
+	home, _ := os.UserHomeDir()
+	return &Config{
+		Volume:       DefaultVolume,
+		Cooldown:     DefaultCooldown,
+		Announce:     DefaultAnnounce,
+		Voice:        DefaultVoice,
+		KokoroVoice:  DefaultKokoroVoice,
+		Names:        map[string]string{},
+		HaloAfter:    DefaultHaloAfter,
+		CritterAfter: DefaultCritterAfter,
+		StaleAfter:   DefaultStaleAfter,
+		Critter:      DefaultCritter,
+		categories:   map[category.ID]categoryFile{},
+		home:         home,
+	}
+}
+
 // Load reads path. A missing file yields built-in defaults: no configured
 // sounds, so every category falls back to its bundled clip (see For).
 // Warnings list unknown keys and categories; err is set for unparsable files
 // and out-of-range values.
 func Load(path string) (cfg *Config, warnings []string, err error) {
-	home, _ := os.UserHomeDir()
-	cfg = &Config{
-		Volume:      DefaultVolume,
-		Cooldown:    DefaultCooldown,
-		Announce:    DefaultAnnounce,
-		Voice:       DefaultVoice,
-		KokoroVoice: DefaultKokoroVoice,
-		Names:       map[string]string{},
-		categories:  map[category.ID]categoryFile{},
-		home:        home,
-	}
+	cfg = Default()
 
 	var f file
 	md, err := toml.DecodeFile(path, &f)
@@ -165,6 +236,40 @@ func Load(path string) (cfg *Config, warnings []string, err error) {
 		}
 		cfg.Names[name] = alias
 	}
+	if v := f.Visual.HaloAfterS; v != nil {
+		if *v < 0 {
+			return nil, warnings, fmt.Errorf("visual.halo_after_s %d is negative", *v)
+		}
+		if cfg.HaloAfter, err = duration("visual.halo_after_s", *v, time.Second); err != nil {
+			return nil, warnings, err
+		}
+	}
+	if v := f.Visual.CritterAfterS; v != nil {
+		if *v < 0 {
+			return nil, warnings, fmt.Errorf("visual.critter_after_s %d is negative", *v)
+		}
+		if cfg.CritterAfter, err = duration("visual.critter_after_s", *v, time.Second); err != nil {
+			return nil, warnings, err
+		}
+	}
+	if cfg.CritterAfter <= cfg.HaloAfter {
+		return nil, warnings, fmt.Errorf("visual.critter_after_s %d must be greater than visual.halo_after_s %d",
+			int(cfg.CritterAfter/time.Second), int(cfg.HaloAfter/time.Second))
+	}
+	if v := f.Visual.StaleAfterH; v != nil {
+		if *v < 1 {
+			return nil, warnings, fmt.Errorf("visual.stale_after_h %d must be at least 1", *v)
+		}
+		if cfg.StaleAfter, err = duration("visual.stale_after_h", *v, time.Hour); err != nil {
+			return nil, warnings, err
+		}
+	}
+	if v := f.Visual.Critter; v != nil {
+		if !ValidCritter(*v) {
+			return nil, warnings, fmt.Errorf("visual.critter %q is not one of: %s", *v, strings.Join(CritterIDs(), ", "))
+		}
+		cfg.Critter = *v
+	}
 
 	names := make([]string, 0, len(f.Categories))
 	for name := range f.Categories {
@@ -184,6 +289,12 @@ func Load(path string) (cfg *Config, warnings []string, err error) {
 		if c.Volume != nil && (*c.Volume < 0 || *c.Volume > 1) {
 			return nil, warnings, fmt.Errorf("categories.%s.volume %v out of range 0.0-1.0", name, *c.Volume)
 		}
+		if c.Color != nil && !hexColor.MatchString(*c.Color) {
+			return nil, warnings, fmt.Errorf("categories.%s.color %q must be #RRGGBB", name, *c.Color)
+		}
+		if c.MaxRung != nil && (*c.MaxRung < 1 || *c.MaxRung > 3) {
+			return nil, warnings, fmt.Errorf("categories.%s.max_rung %d must be 1, 2 or 3", name, *c.MaxRung)
+		}
 		c.Sound = resolveRelative(c.Sound, filepath.Dir(path))
 		cfg.categories[id] = c
 	}
@@ -194,7 +305,7 @@ func Load(path string) (cfg *Config, warnings []string, err error) {
 // without a configured sound uses <BundledDir>/<KokoroVoice>/<id>.wav when BundledDir is set.
 func (c *Config) For(id category.ID) Category {
 	d, _ := category.DefaultFor(id)
-	out := Category{Enabled: d.Enabled, Delay: d.Delay, Volume: c.Volume}
+	out := Category{Enabled: d.Enabled, Delay: d.Delay, Volume: c.Volume, Color: d.Color, MaxRung: d.MaxRung}
 	if f, ok := c.categories[id]; ok {
 		out.Sound = expandHome(f.Sound, c.home)
 		if f.Enabled != nil {
@@ -206,12 +317,26 @@ func (c *Config) For(id category.ID) Category {
 		if f.Volume != nil {
 			out.Volume = *f.Volume
 		}
+		if f.Color != nil {
+			out.Color = *f.Color
+		}
+		if f.MaxRung != nil {
+			out.MaxRung = *f.MaxRung
+		}
 	}
 	if out.Sound == "" && c.BundledDir != "" {
 		out.Sound = filepath.Join(c.BundledDir, c.KokoroVoice, string(id)+".wav")
 		out.Bundled = true
 	}
 	return out
+}
+
+// duration converts v units to a Duration, rejecting values that overflow.
+func duration(key string, v int, unit time.Duration) (time.Duration, error) {
+	if int64(v) > math.MaxInt64/int64(unit) {
+		return 0, fmt.Errorf("%s %d is too large", key, v)
+	}
+	return time.Duration(v) * unit, nil
 }
 
 // resolveRelative anchors a relative sound path at the config file's
@@ -235,10 +360,12 @@ func expandHome(p, home string) string {
 }
 
 // Template is the commented default file written by `cnw init`.
-const Template = `# cnw — Claude Code attention sounds. All durations are in milliseconds.
+const Template = `# cnw — attention sounds (and, on macOS, a visual signal) for Claude Code and
+# omp. Durations are in milliseconds unless the key says _s (seconds) or _h
+# (hours).
 # Categories: question, plan_approval, permission, mcp_input, done_question,
 # done, done_background, error, usage_limit, idle_reminder.
-# Per-category keys: sound, enabled, delay_ms, volume.
+# Per-category keys: sound, enabled, delay_ms, volume, color, max_rung.
 # A category without a sound plays the plugin's bundled voice clip
 # (sounds/<kokoro_voice>/<category>.wav); set enabled = false to silence it.
 # Relative sound paths are resolved against this file's directory. On Windows
@@ -258,6 +385,20 @@ voice = "Matilda (Premium)"
 # Pronunciation aliases for project or worktree names:
 # [names]
 # "agent-harness-notifications" = "notifier"
+
+# Visual signal, macOS only (elsewhere the keys do nothing but are still
+# validated: an invalid value is a config error, which silences every sound),
+# after ` + "`cnw visual install`" + `:
+# a glow around the screen edge, then a halo around the pointer, then a desk
+# critter, while a session waits on you. Per category: color = "#RRGGBB",
+# max_rung = 1 (glow), 2 (halo) or 3 (critter). critter = "random" (a different
+# one each time), "blob", "ghost", "cat", "deskbot", "tintoy" or "drone"; list
+# them: cnw visual critters
+# [visual]
+# halo_after_s = 60
+# critter_after_s = 120
+# critter = "random"
+# stale_after_h = 6
 
 # [categories.question]
 # sound = "~/Sounds/cnw/question.wav"

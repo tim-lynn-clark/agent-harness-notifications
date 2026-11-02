@@ -2,11 +2,12 @@
 
 ## What it does
 
-`cnw` is a Claude Code plugin plus a small Go binary that plays a different sound for each kind of
-attention request: a structured question, a plan to approve, a tool permission, an MCP input
-request, a finished turn, an error, a usage limit, or an idle reminder. Claude Code hook events are
-classified into the categories below. Out of the box each category plays a short spoken clip (see
-[Default sounds](#default-sounds)); you can replace any of them with your own file.
+`cnw` is a Claude Code plugin and omp extension around a small Go binary. It plays a different
+sound for each kind of attention request: a structured question, a plan to approve, a tool
+permission, an MCP input request, a finished turn, an error, a usage limit, or an idle reminder. On
+macOS it can also show the request on screen ([Visual signal](#visual-signal-macos)). Claude Code
+hook events are classified into the categories below. Out of the box each category plays a short
+spoken clip (see [Default sounds](#default-sounds)); you can replace any of them with your own file.
 
 | ID | Meaning | Default clip says | Default delay | Default enabled |
 |---|---|---|---|---|
@@ -29,10 +30,37 @@ before then stays silent.
 
 - Claude Code ≥ 2.1.288
 - macOS (`afplay`); Linux with one of `pw-play`, `paplay`, `aplay`; or Windows with Git for Windows
+  (Git Bash runs the launcher for Claude Code's hooks; omp runs `cnw.exe` directly and doesn't need it)
 - WSL: the stock images ship no player, so install one with `sudo apt-get install -y
   pulseaudio-utils` (WSLg already runs the PulseAudio server). Without it, `cnw` falls back to
   Windows' own player through interop, which is slower and ignores volume.
 - Go 1.25, only to build from a local clone
+
+## Platform support
+
+Binaries are built for macOS (Apple silicon and Intel), Linux (x64 and arm64) and Windows (x64).
+On any other platform the launcher exits quietly: no sound and no message. Windows on ARM runs Git
+Bash under x64 emulation, so the launcher runs the x64 build (untested).
+
+| Feature | macOS | Linux | Windows (Git Bash) | WSL 2 |
+|---|---|---|---|---|
+| Sounds (hooks, `notify`, `turn-end`) | yes (`afplay`) | yes (`pw-play`, `paplay` or `aplay`) | yes (PowerShell's player) | yes (`paplay` after installing `pulseaudio-utils`; else Windows' player through interop) |
+| `volume` | yes | yes, except with `aplay` | ignored | yes with `paplay`; ignored through interop |
+| Sound formats | WAV, plus MP3/M4A and other `afplay` formats | WAV, plus what the player supports | WAV only | as Linux with `paplay`; WAV only through the `powershell.exe` fallback |
+| Spoken names, default | `say` (voice Matilda (Premium); chimes if it's missing) | chimes | chimes | chimes |
+| Spoken names, Kokoro (opt-in) | Apple silicon; Intel untested | x64 (checked in CI); arm64 untested | x64 (checked in CI) | yes |
+| Slash commands, Claude Code | yes | yes | yes | yes |
+| Slash commands, omp | yes | yes | yes | yes |
+| Visual signal (glow, halo, critters, orb) | yes (opt-in; untested on Intel Macs) | no | no | no |
+| Jump to the waiting terminal | yes | no | no | no |
+| LaunchAgent / start at login | yes (`cnw visual install`) | no | no | no |
+| `cnw doctor` | everything, plus the visual signal | everything but the visual signal | everything but the visual signal, plus Git Bash | as Linux |
+
+The visual signal, the orb and jump are **macOS only for now**. On Linux, Windows and WSL,
+`cnw visual` prints `cnw visual: only macOS is supported so far`, and the `[visual]` keys do
+nothing; sessions still record that they are waiting, which is harmless. The keys are still
+validated, though: an invalid value is a config error, and a config error silences every sound. A
+Windows version is planned: see [the Windows visual handoff](docs/plans/2026-11-02-windows-visual-handoff.md).
 
 ## Install
 
@@ -79,10 +107,11 @@ claude plugin install cnw-dev@cnw-marketplace
 
 ### Releasing
 
-Bump `version` in `.claude-plugin/plugin.json` and `package.json`, commit, then push a matching tag:
+Bump `version` in `.claude-plugin/plugin.json` and `package.json` in a pull request. After it
+merges, push an annotated tag (the maintainer's git config rejects tags without a message):
 
 ```bash
-git tag v0.3.0 && git push origin v0.3.0
+git tag -m vX.Y.Z vX.Y.Z && git push origin vX.Y.Z
 ```
 
 `.github/workflows/release.yml` runs `go test ./...` and `scripts/build.sh`, then
@@ -108,10 +137,11 @@ Every `cnw` command this README asks you to run has a slash command with the sam
 | `/cnw:init` | `cnw init` |
 | `/cnw:voices [play ID [CATEGORY]]` | `cnw voices …` |
 | `/cnw:kokoro install [--from DIR] \| urls \| remove` | `cnw kokoro …` |
+| `/cnw:visual install \| uninstall \| critters \| preview [CATEGORY] [--critter ID]` | `cnw visual …` (macOS) |
 
 Claude Code shows the output and explains any error or FAIL/WARN line; omp shows the output as
-is. `notify`, `resolve`, `turn-end` and `hook` are what the agents themselves run, so they have
-none.
+is. `hook`, `notify`, `resolve`, `turn-end`, `fire`, `visual host` and `visual jump` are run by the
+agents, the LaunchAgent or the menu bar orb, so they have none.
 
 The plugin doesn't put `cnw` on your `PATH`. To run a command from a terminal instead, `cnw` in
 this README means the plugin's launcher:
@@ -185,9 +215,9 @@ clip to the same loudness (−18 LUFS). Python dependencies are pinned in
 ## Announcements
 
 After each clip, `cnw` says where the request comes from: "Permission needed." …
-"notifier, specification". Out of the box the name is spoken by macOS `say`, so it sounds different
-from the bundled clips. Run `cnw kokoro install` to speak names in the clips' own voice on macOS,
-Windows, and Linux (see below).
+"notifier, specification". Out of the box, macOS speaks the name with `say`, so it sounds different
+from the bundled clips; Linux and Windows play a per-project chime instead. Run `cnw kokoro install`
+to speak names in the clips' own voice on macOS, Windows, and Linux (see below).
 
 - **What is said.** The project and the worktree. The project is the main repository's folder name;
   the worktree is the linked worktree's folder name. The main checkout gives just the project, and a
@@ -220,7 +250,9 @@ Opt-in. It downloads about 376 MB and installs about 405 MB into `kokoro/` in th
 the [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) speech engine (v1.12.40) and the
 Kokoro-82M v1.0 model, the same weights the bundled clips are made from. Names are then spoken in
 your [`kokoro_voice`](#choosing-a-voice) (default `af_heart`) and levelled to the clips' loudness.
-Installing again re-records the cached names, so an upgrade replaces them.
+A fresh install clears names cached by an earlier engine, so they are recorded again. Running
+`install` while Kokoro is installed only reports it; to re-record, run `cnw kokoro remove` and then
+`cnw kokoro install`.
 
 ```bash
 cnw kokoro install                 # download, verify SHA-256, install, play a test phrase
@@ -238,6 +270,53 @@ cnw kokoro remove
 - **Licences.** The engine is Apache-2.0 and the model weights are Apache-2.0. The engine includes
   espeak-ng (GPL-3.0), which pronounces words missing from the dictionary. All of it is downloaded
   from the sherpa-onnx releases to your machine; none of it ships with `cnw`.
+
+## Visual signal (macOS)
+
+Opt-in, macOS only (see [Platform support](#platform-support)). While a session waits on you, `cnw`
+also shows it on screen. The signal escalates the longer you leave it, and clears by itself when you
+answer or type your next prompt:
+
+| After | You see |
+|---|---|
+| 0 s | A soft glow around the edge of every display, in the category's colour. With several sessions waiting, each edge is split into one colour per session. |
+| 60 s | A halo (a ring around the pointer) with the project and what it needs (`notifier · permission`). |
+| 2 min | A critter comes in from the nearer screen edge, stops below the pointer and holds up a sign with the category and the project name. |
+
+Done, done in the background, error, usage limit and a bare idle reminder stop at the halo; prompts
+and a finished turn with a question go on to the critter. A menu bar dot shows how many sessions
+are waiting; its menu lists them, and clicking one brings its terminal to the front (Orca, switched
+to the session's terminal; iTerm2 or Terminal.app tab; VS Code or Cursor window; or else the app).
+The overlays ignore clicks and don't appear in screen shares or recordings. With Reduce Motion on,
+nothing pulses or walks.
+
+The critter is one of six, a different one each time unless you pick one with `critter` under
+`[visual]` (`cnw visual critters` lists them):
+
+- `blob`: a shaded blob with sparkly eyes and a glowing antenna bulb; walks in.
+- `ghost`: a pale ghost with a wavy hem and a glowing outline; floats up and drifts across.
+- `cat`: a round cat with ears, whiskers and a swishing tail; pads in and sits.
+- `deskbot`: a glossy white robot with a dark visor and a heart light; rolls in on one wheel.
+- `tintoy`: a red and cream wind-up tin robot with a spinning key and a chest dial; waddles in.
+- `drone`: a dark drone with two rotors and a camera eye; flies in with the sign on cables.
+
+```bash
+cnw visual install                    # start it now and at every login (a LaunchAgent)
+cnw visual preview [CATEGORY]         # run the whole escalation in 12 s
+cnw visual preview --critter ghost    # ... with a given critter
+cnw visual critters                   # list the critters; * marks yours
+cnw visual uninstall
+```
+
+The first jump into Terminal or iTerm2 makes macOS ask whether `osascript` may control it. Timings,
+colours and how far each category escalates are in [Configure](#configure).
+
+One visual host serves every install. If both the Claude Code plugin and the omp extension are
+installed, they share it: after an update, the next `cnw hook` or `cnw notify` moves the LaunchAgent
+to its own binary when the one recorded there is missing or older; a newer recorded binary is left
+alone. `cnw doctor` reports whether the host is running, and says so when the LaunchAgent runs
+another install's binary or one that no longer exists. After *Quit visuals* in the orb's menu, the
+host stays stopped until `cnw visual install` or the next login.
 
 ## Configure
 
@@ -265,6 +344,13 @@ top-level `volume`. A relative `sound` path is resolved against the config file'
 Windows, write `sound` paths as single-quoted TOML literal strings (`'C:\Users\me\ding.wav'`) or
 with forward slashes: `\U` inside a double-quoted string is a TOML escape.
 
+Visual signal keys (see [Visual signal (macOS)](#visual-signal-macos)):
+
+- `[visual]`: `halo_after_s` (default 60), `critter_after_s` (default 120, must be greater than
+  `halo_after_s`), `stale_after_h` (default 6: ignore sessions waiting longer, e.g. after a crash),
+  `critter` (default `"random"`, or `"blob"`, `"ghost"`, `"cat"`, `"deskbot"`, `"tintoy"`, `"drone"`).
+- Per category: `color` (`"#RRGGBB"`) and `max_rung` (1 glow, 2 halo, 3 critter).
+
 ```toml
 volume = 0.8
 cooldown_ms = 1500
@@ -285,7 +371,8 @@ volume = 0.4
 ```
 
 WAV works on every platform; other formats work where the player supports them (`afplay` plays
-MP3/M4A). Audition a mapping with:
+MP3/M4A; Windows plays WAV only). `volume` has no effect on Windows or with `aplay`. Audition a
+mapping with:
 
 ```bash
 cnw play question
@@ -336,7 +423,7 @@ Code only. The extension drives `cnw` through commands any agent can use:
 
 ```text
 cnw notify CATEGORY --session ID [--cwd DIR] [--pending] [--after MS]   # --pending: cancellable prompt
-cnw resolve --session ID                                                # prompt answered: cancel its sound
+cnw resolve --session ID                                                # prompt answered: cancel its sound, clear the visual
 cnw turn-end --session ID [--cwd DIR] [--error]                         # final reply on stdin
 ```
 
@@ -348,7 +435,13 @@ Run `/cnw:doctor` in a Claude Code or omp session, or `cnw doctor` in a terminal
 `doctor` reports the Claude Code version, config path and validation errors, the bundled voice, each
 category's sound (marked `bundled` for a default clip; a missing default clip fails with a hint to run
 `scripts/make-sounds.sh`), what the current directory is announced as and what speaks it (Kokoro,
-`say`, or chimes), the audio backend, Git Bash on Windows, and the last 20 classified events.
+`say`, or chimes), the audio backend, Git Bash on Windows, the Orca sound reminder inside Orca, on
+macOS the visual signal (LaunchAgent, host heartbeat, Orca CLI for jumps), and the last 20
+classified events.
+
+Sounds that arrive in a burst can be dropped: `cnw` plays one sound at a time, and a sound that
+waits more than 15 s for the one before it is skipped (`lock-timeout` in the event log). The
+session is still marked as waiting for the visual signal.
 
 No sound at all: check `claude plugin list` shows `cnw@cnw-marketplace` (or `cnw-dev`) enabled. For
 `cnw-dev`, also check that `./scripts/build.sh` has been run in the clone the marketplace was added
@@ -371,6 +464,8 @@ Known limits:
   real hardware: bare-metal Linux, Linux arm64, and native Windows. The Kokoro install is unproven
   on Windows under application control (AppLocker, WDAC), and the WSL interop fallback
   (`powershell.exe`, used only when no Linux player is installed) has never played a sound.
+- The visual signal is checked by hand on Apple silicon with one display; it is untested on Intel
+  Macs and with several displays.
 
 ## Development
 
@@ -386,7 +481,8 @@ and pull request. Report security issues privately through the repository's **Se
 Design and behaviour: [docs/specs/2026-10-25-notification-wrapper-design.md](docs/specs/2026-10-25-notification-wrapper-design.md);
 project announcements: [docs/specs/2026-10-27-project-announcements-design.md](docs/specs/2026-10-27-project-announcements-design.md);
 Kokoro names: [docs/specs/2026-10-29-kokoro-names-design.md](docs/specs/2026-10-29-kokoro-names-design.md);
-voice selection: [docs/specs/2026-10-29-voice-selection-design.md](docs/specs/2026-10-29-voice-selection-design.md).
+voice selection: [docs/specs/2026-10-29-voice-selection-design.md](docs/specs/2026-10-29-voice-selection-design.md);
+visual signal (macOS): [docs/specs/2026-10-31-visual-attention-design.md](docs/specs/2026-10-31-visual-attention-design.md).
 
 ## License
 

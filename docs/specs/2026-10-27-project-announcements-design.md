@@ -1,6 +1,6 @@
 # Project announcements — Design
 
-Status: draft for review · Date: 2026-10-27 · Extends: [notification wrapper design](2026-10-25-notification-wrapper-design.md)
+Status: implemented · Date: 2026-10-27 · Extends: [notification wrapper design](2026-10-25-notification-wrapper-design.md)
 
 ## 1. Problem
 

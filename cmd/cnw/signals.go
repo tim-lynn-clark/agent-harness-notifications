@@ -53,6 +53,7 @@ func runNotify(args []string) int {
 	}
 	rec := newRecord(now)
 	rec.Event, rec.SessionID, rec.Result = "notify", *session, string(id)
+	defer healVisual(st) // after the event is handled and logged
 	defer func() { _ = st.Log(rec) }()
 
 	var seq int64
@@ -62,7 +63,7 @@ func runNotify(args []string) int {
 			return 1
 		}
 	}
-	schedule(&rec, *session, *cwd, seq, id, time.Duration(*afterMS)*time.Millisecond)
+	schedule(&rec, *session, *cwd, seq, id, time.Duration(*afterMS)*time.Millisecond, now)
 	return 0
 }
 
@@ -85,7 +86,7 @@ func runResolve(args []string) int {
 	rec := newRecord(time.Now())
 	rec.Event, rec.SessionID, rec.Result = "resolve", *session, "cancel"
 	defer func() { _ = st.Log(rec) }()
-	if err := app.Resolve(st, *session); err != nil {
+	if err := app.Resolve(st, *session, time.Now()); err != nil {
 		rec.Outcome = "state: " + err.Error()
 		return 1
 	}
@@ -129,10 +130,10 @@ func runTurnEnd(args []string, stdin io.Reader) int {
 		id = category.DoneQuestion
 	}
 	rec.Result = string(id)
-	if err := app.Resolve(st, *session); err != nil {
+	if err := app.Resolve(st, *session, now); err != nil {
 		rec.Outcome = "state: " + err.Error()
 		return 1
 	}
-	schedule(&rec, *session, *cwd, 0, id, 0)
+	schedule(&rec, *session, *cwd, 0, id, 0, now)
 	return 0
 }

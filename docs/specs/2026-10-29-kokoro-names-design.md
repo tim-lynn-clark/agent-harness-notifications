@@ -152,7 +152,12 @@ Live checks done on macOS arm64:
 - `fire` records and caches a name;
 - a missing `--from` file prints the URLs and the hint.
 
-Windows and Linux are untested.
+On Linux x64 and Windows x64, CI (`.github/workflows/smoke.yml`) installs Kokoro from the archives
+and checks that a notification records a spoken name that is audible and levelled
+(`scripts/checkwav`), on every push and pull request. Playback reaches `aplay` on Linux through a
+null ALSA device; on Windows nothing is heard, so playback there is unproven. WSL 2 (Ubuntu 24.04)
+was confirmed by ear. Unproven: Linux arm64, native Windows audio, and locked-down Windows
+(AppLocker, WDAC).
 
 ## 11. Risks
 

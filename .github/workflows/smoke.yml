@@ -3,6 +3,8 @@ name: smoke
 # Linux and Windows end-to-end check: build, install the Kokoro engine, and make a
 # notification record a spoken name. Runner images have no sound device, so playback
 # itself is only asserted on Linux, where a null ALSA device stands in for one.
+# The visual-macos job runs the macOS visual host through a preview of every critter
+# and checks it stays alive, keeps polling, and logs no drawing errors.
 on:
   push:
   pull_request:
@@ -108,3 +110,42 @@ jobs:
           }
 
       - run: ./bin/cnw doctor
+
+  visual-macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: go test ./...
+      - run: ./scripts/build.sh
+      - name: Compile the visual host script (host.js joined with critters.js)
+        run: |
+          go run ./scripts/hostscript > "$RUNNER_TEMP/host.js"
+          osacompile -l JavaScript -o "$RUNNER_TEMP/host.scpt" "$RUNNER_TEMP/host.js"
+      - name: Run the visual host against a preview of every critter
+        run: |
+          export CNW_STATE_DIR="$RUNNER_TEMP/state" CNW_CONFIG="$RUNNER_TEMP/none.toml"
+          log="$RUNNER_TEMP/visual-host.log"
+          beat="$CNW_STATE_DIR/visual-host.alive"
+          ./bin/cnw visual host 2>"$log" & host=$!
+          fail() { echo "$1" >&2; echo "host stderr:" >&2; cat "$log" >&2; kill "$host" 2>/dev/null; exit 1; }
+          for _ in $(seq 40); do [ -f "$beat" ] && break; kill -0 "$host" || break; sleep 0.5; done
+          [ -f "$beat" ] || fail "no heartbeat within 20 s"
+          first=$(cat "$beat")
+          for id in blob ghost cat deskbot tintoy drone; do
+            ./bin/cnw visual preview permission --critter "$id" || fail "preview $id failed"
+            # The critter starts 6 s in and settles by about 11 s; it is still waving at the
+            # check, so an error in its exit shows up during the next id.
+            sleep 13
+            kill -0 "$host" || fail "the visual host exited during $id"
+            ! grep -q 'cnw visual host:' "$log" || fail "the visual host logged errors during $id"
+          done
+          # Let the last critter (drone) finish its exit and check once more.
+          sleep 6
+          kill -0 "$host" || fail "the visual host exited during the last exit"
+          ! grep -q 'cnw visual host:' "$log" || fail "the visual host logged errors during the last exit"
+          # The heartbeat is rewritten every 5 s.
+          [ "$(cat "$beat")" != "$first" ] || fail "the heartbeat did not change: the poll loop is not running"
+          kill "$host"

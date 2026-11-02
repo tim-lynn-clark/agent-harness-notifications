@@ -1,6 +1,6 @@
 {
   "name": "cnw-marketplace",
-  "description": "Marketplace for the cnw attention-sound plugin",
+  "description": "Marketplace for cnw: attention sounds and a macOS visual signal for Claude Code and omp",
   "owner": { "name": "Tim Clark" },
   "plugins": [
     {
@@ -10,7 +10,7 @@
         "repo": "tim-lynn-clark/agent-harness-notifications",
         "ref": "release"
       },
-      "description": "Distinct sounds for each kind of Claude Code attention request: questions, approvals, completion, errors."
+      "description": "Distinct spoken alerts for each kind of coding-agent attention request (questions, approvals, completion, errors), naming the project (macOS, or anywhere with Kokoro); optional on-screen signal on macOS. For Claude Code and omp."
     },
     {
       "name": "cnw-dev",

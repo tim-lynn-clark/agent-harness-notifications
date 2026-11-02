@@ -162,6 +162,10 @@ func runDoctor() int {
 		report("INFO", "running inside Orca: turn off Orca's sound under Settings → Notifications to avoid double audio")
 	}
 
+	if runtime.GOOS == "darwin" {
+		reportVisual(report)
+	}
+
 	if st, err := openStore(); err == nil {
 		fmt.Printf("\nstate: %s\nrecent events:\n", st.Dir)
 		lines, _ := st.Tail(20)
