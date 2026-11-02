@@ -1,6 +1,6 @@
 {
   "name": "cnw",
-  "version": "0.4.6",
+  "version": "0.5.0",
   "description": "Distinct spoken alerts for each kind of coding-agent attention request (questions, approvals, completion, errors), naming the project (macOS, or anywhere with Kokoro); optional on-screen signal on macOS. For Claude Code and omp.",
   "author": { "name": "Tim Clark" },
   "license": "MIT"
