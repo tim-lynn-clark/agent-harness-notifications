@@ -39,9 +39,11 @@ var spawnFire = func(args []string) error {
 	return cmd.Process.Release()
 }
 
-// runFire waits out the delay, computes the label and the announcement
-// sequence (which may record a missing name with Kokoro or `say`), then takes
-// the play lock, claims the sound, and plays the whole sequence under the lock.
+// runFire waits out the delay, drops a prompt already answered (logged
+// "cancelled", without waiting for the lock), computes the label and the
+// announcement sequence (which may record a missing name with Kokoro or
+// `say`), then takes the play lock, claims the sound, and plays the whole
+// sequence under the lock.
 // Recording before locking keeps the lock short. Locking before claiming
 // means a lock timeout neither consumes the prompt nor starts the cooldown
 // (it only marks the session waiting), and a prompt answered during the wait
@@ -69,6 +71,15 @@ func runFire(args []string) {
 		rec.Time = time.Now().Format(time.RFC3339Nano)
 		_ = st.Log(rec)
 	}()
+	// A prompt answered during the delay needs no lock wait: report it as
+	// cancelled now. Claim re-checks under the lock, so this read can't play a
+	// stale prompt.
+	if *seq > 0 {
+		if s, err := st.Load(*session); err == nil && (s.Pending == nil || s.Pending.Seq != *seq) {
+			rec.Outcome = app.OutcomeCancelled
+			return
+		}
+	}
 
 	cfg, _, err := loadConfig()
 	if err != nil {

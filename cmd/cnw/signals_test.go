@@ -105,6 +105,27 @@ func TestTurnEndClearsPendingPrompt(t *testing.T) {
 	}
 }
 
+func TestFireOfResolvedPromptSkipsPlayLock(t *testing.T) {
+	st := signalEnv(t)
+	if _, err := st.Update("s", func(s *state.Session) { s.Pending = &state.Pending{Seq: 2, Category: "question"} }); err != nil {
+		t.Fatal(err)
+	}
+	release, ok, err := st.AcquirePlayLock(time.Second)
+	if err != nil || !ok {
+		t.Fatalf("hold play lock: ok=%v err=%v", ok, err)
+	}
+	defer release()
+	start := time.Now()
+	runFire([]string{"--session", "s", "--seq", "1", "--category", "question", "--delay", "0"})
+	if d := time.Since(start); d > 2*time.Second {
+		t.Fatalf("fire waited %v for the play lock", d)
+	}
+	recs := readLog(t, st.Dir)
+	if len(recs) != 1 || recs[0].Event != "fire" || recs[0].Outcome != "cancelled" {
+		t.Fatalf("log = %+v, want one fire/cancelled", recs)
+	}
+}
+
 func TestNotifyWithoutPendingRegistersNothing(t *testing.T) {
 	st := signalEnv(t)
 	if code := runNotify([]string{"idle_reminder", "--session", "omp-3"}); code != 0 {
