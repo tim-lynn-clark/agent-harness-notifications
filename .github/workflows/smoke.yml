@@ -3,6 +3,8 @@ name: smoke
 # Linux and Windows end-to-end check: build, install the Kokoro engine, and make a
 # notification record a spoken name. Runner images have no sound device, so playback
 # itself is only asserted on Linux, where a null ALSA device stands in for one.
+# The visual-macos job runs the macOS visual host against a preview and checks it
+# stays alive, keeps polling, and logs no drawing errors.
 on:
   push:
   pull_request:
@@ -123,10 +125,17 @@ jobs:
       - name: Run the visual host against a preview
         run: |
           export CNW_STATE_DIR="$RUNNER_TEMP/state" CNW_CONFIG="$RUNNER_TEMP/none.toml"
-          ./bin/cnw visual host & host=$!
-          for _ in $(seq 40); do [ -f "$CNW_STATE_DIR/visual-host.alive" ] && break; kill -0 "$host" || break; sleep 0.5; done
+          log="$RUNNER_TEMP/visual-host.log"
+          beat="$CNW_STATE_DIR/visual-host.alive"
+          ./bin/cnw visual host 2>"$log" & host=$!
+          fail() { echo "$1" >&2; echo "host stderr:" >&2; cat "$log" >&2; kill "$host" 2>/dev/null; exit 1; }
+          for _ in $(seq 40); do [ -f "$beat" ] && break; kill -0 "$host" || break; sleep 0.5; done
+          [ -f "$beat" ] || fail "no heartbeat within 20 s"
+          first=$(cat "$beat")
           ./bin/cnw visual preview permission
-          sleep 5
-          kill -0 "$host" || { echo "the visual host exited" >&2; exit 1; }
-          test -f "$CNW_STATE_DIR/visual-host.alive" || { echo "no heartbeat" >&2; exit 1; }
+          # The critter starts 6 s into the preview; the heartbeat is rewritten every 5 s.
+          sleep 8
+          kill -0 "$host" || fail "the visual host exited"
+          [ "$(cat "$beat")" != "$first" ] || fail "the heartbeat did not change: the poll loop is not running"
+          ! grep -q 'cnw visual host:' "$log" || fail "the visual host logged errors"
           kill "$host"

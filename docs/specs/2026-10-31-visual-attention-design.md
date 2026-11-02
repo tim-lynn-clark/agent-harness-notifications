@@ -297,8 +297,10 @@ Go unit tests:
 CI: a `macos-15` job in `.github/workflows/smoke.yml`:
 
 - `osacompile -l JavaScript` on the embedded script;
-- `cnw visual host`: wait up to 20 s for its heartbeat file, start a preview, and after 5 s assert
-  the heartbeat file exists and the process is still running.
+- `cnw visual host` with its stderr sent to a file: fail if no heartbeat file appears within 20 s;
+  record the heartbeat, start a preview, and after 8 s (the critter starts at 6 s) fail if the
+  process has exited, the heartbeat hasn't changed (the poll loop is dead), or stderr has any
+  `cnw visual host:` line (a caught drawing error); print stderr on failure.
 
 It isn't a required check until it has proven stable.
 
