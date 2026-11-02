@@ -379,12 +379,16 @@ function critterKey(e) {
   return e.id + '|' + e.category + '|' + e.since;
 }
 
+let lastRandom = ''; // the previous random pick, never repeated
+
 // critterId resolves the configured look; random (or anything unknown) picks
-// one per appearance.
+// one per appearance, never the same as the previous random pick.
 function critterId(look) {
   if (CRITTERS[look]) return look;
-  const ids = Object.keys(CRITTERS);
-  return ids[Math.floor(Math.random() * ids.length)];
+  let ids = Object.keys(CRITTERS);
+  if (ids.length > 1) ids = ids.filter((id) => id !== lastRandom);
+  lastRandom = ids[Math.floor(Math.random() * ids.length)];
+  return lastRandom;
 }
 
 function renderCritter(now) {

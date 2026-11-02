@@ -225,7 +225,8 @@ function sign(p, e, o) {
   piv.layer.addSublayer(board);
   const tilt = o.tilt || 0;
   if (tilt) piv.layer.setTransform($.CATransform3DMakeRotation(tilt, 0, 0, 1));
-  return { layer: piv.layer, tilt: tilt, cx: o.x * CRITTER_K, w: w };
+  // reach: how far the board's far edge is from the pivot, for the swing allowance.
+  return { layer: piv.layer, tilt: tilt, cx: o.x * CRITTER_K, w: w, reach: Math.abs(topY) + h };
 }
 
 // ---- motion helpers -------------------------------------------------------------
@@ -565,16 +566,17 @@ function buildDrone(p, e) {
 }
 
 const DRONE_LIFT = 83; // the drone's sign hangs about 120 pt above the bottom edge
+const WAVE = 0.35; // the goodbye wave's swing either side of the sign's tilt, radians
 
 // CRITTERS: per id, the builder, how it moves, the body's centre and the
-// figure's left and right edges without the sign (mockup units), and how high
-// it rests above the bottom edge (points).
+// figure's left and right edges without the sign (mockup units), how high it
+// rests above the bottom edge (points) and, for the tin toy, its rock (radians).
 const CRITTERS = {
   blob: { build: buildBlob, move: 'ground', bodyX: 110, minX: 48, maxX: 178, lift: 0 },
   ghost: { build: buildGhost, move: 'float', bodyX: 105, minX: 33, maxX: 180, lift: 0 },
   cat: { build: buildCat, move: 'ground', bodyX: 100, minX: 36, maxX: 202, lift: 0 },
   deskbot: { build: buildDeskbot, move: 'ground', bodyX: 105, minX: 52, maxX: 172, lift: 0 },
-  tintoy: { build: buildTintoy, move: 'ground', bodyX: 105, minX: 55, maxX: 200, lift: 0 },
+  tintoy: { build: buildTintoy, move: 'ground', bodyX: 105, minX: 55, maxX: 200, lift: 0, rock: 0.07 },
   drone: { build: buildDrone, move: 'fly', bodyX: 130, minX: 50, maxX: 210, lift: DRONE_LIFT },
 };
 
@@ -595,7 +597,9 @@ function critterBuild(id, e, o) {
   box.addSublayer(fig);
   const parts = def.build(pen(fig, 0, 0, o.frame.scale), e);
   const s = parts.sign;
-  const swing = 12; // room for the sign's sway and wave
+  // The sign swings sideways by up to reach × sin(tilt + wave) (the wave is the
+  // widest swing; every idle sway is smaller), plus the tin toy's whole-body rock.
+  const swing = s.reach * Math.sin(Math.abs(s.tilt) + WAVE) + 270 * Math.sin(def.rock || 0);
   const left = Math.max((def.bodyX - def.minX) * k, def.bodyX * k - (s.cx - s.w / 2) + swing);
   const right = Math.max((def.maxX - def.bodyX) * k, s.cx + s.w / 2 - def.bodyX * k + swing);
   return { overlay: o, box: box, def: def, parts: parts, left: left, right: right, gone: false };
@@ -656,10 +660,14 @@ function critterDepart(c, reduce) {
   }
   const s = c.parts.sign;
   s.layer.removeAnimationForKey($('sway'));
-  loop(s.layer, 'transform.rotation.z', s.tilt - 0.35, s.tilt + 0.35, 0.2, 'wave', 1.2);
+  loop(s.layer, 'transform.rotation.z', s.tilt - WAVE, s.tilt + WAVE, 0.2, 'wave', 1.2);
   const W = c.overlay.frame.w;
   const pres = c.box.presentationLayer;
   const from = pres.isNil() ? c.box.position : pres.position;
+  // Freeze any unfinished entry where it is, so it waves in place.
+  c.box.removeAnimationForKey($('position.x'));
+  c.box.removeAnimationForKey($('position.y'));
+  noAnim(() => c.box.setPosition($.NSMakePoint(from.x, from.y)));
   const toRight = from.x >= W / 2;
   const end = toRight ? W + c.left + 40 : -c.right - 40;
   const dur = travelTime(end - from.x);
