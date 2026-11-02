@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -222,16 +224,18 @@ func reportVisual(report func(status, format string, a ...any)) {
 	if _, err := exec.LookPath("osascript"); err != nil {
 		report("FAIL", "visual: osascript not found")
 	}
-	if _, installed := visual.InstalledPath(st.Dir); !installed {
-		report("INFO", "visual signal not installed (`cnw visual install` to enable)")
-		return
-	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		report("FAIL", "visual: %v", err)
 		return
 	}
+	// The plist is checked even without visual.installed here: an install made
+	// with another CNW_STATE_DIR records it only in that directory.
 	p, err := visual.ReadPlist(home)
+	if _, installed := visual.InstalledPath(st.Dir); !installed && errors.Is(err, fs.ErrNotExist) {
+		report("INFO", "visual signal not installed (`cnw visual install` to enable)")
+		return
+	}
 	if err != nil {
 		report("FAIL", "visual: can't read the LaunchAgent (run `cnw visual install`): %v", err)
 		return

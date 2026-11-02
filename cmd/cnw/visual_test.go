@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/tim-lynn-clark/agent-harness-notifications/internal/visual"
 )
 
 func TestReportOrcaCLIFollowsDetect(t *testing.T) {
@@ -34,4 +37,21 @@ func TestReportOrcaCLIFollowsDetect(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDoctorFlagsAPlistForAnotherStateDir(t *testing.T) {
+	home, other := t.TempDir(), t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CNW_STATE_DIR", t.TempDir()) // no visual.installed here
+	if err := visual.Install(home, other, "/bin/cnw", func(string, ...string) ([]byte, error) { return nil, nil }); err != nil {
+		t.Fatal(err)
+	}
+	var lines []string
+	reportVisual(func(status, format string, a ...any) { lines = append(lines, status+" "+fmt.Sprintf(format, a...)) })
+	for _, l := range lines {
+		if strings.HasPrefix(l, "FAIL visual: the LaunchAgent watches "+other) {
+			return
+		}
+	}
+	t.Fatalf("no state-dir mismatch FAIL in %q", lines)
 }

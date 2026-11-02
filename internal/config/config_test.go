@@ -295,6 +295,7 @@ func TestInvalidVisualValues(t *testing.T) {
 		"rung zero":                   "[categories.done]\nmax_rung = 0\n",
 		"rung four":                   "[categories.done]\nmax_rung = 4\n",
 		"halo overflows":              "[visual]\nhalo_after_s = 9223372037\n",
+		"negative critter":            "[visual]\ncritter_after_s = -9223372037\n",
 		"critter overflows":           "[visual]\ncritter_after_s = 9223372037\n",
 		"stale overflows":             "[visual]\nstale_after_h = 2562048\n",
 	} {

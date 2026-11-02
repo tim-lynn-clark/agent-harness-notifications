@@ -206,6 +206,9 @@ func Load(path string) (cfg *Config, warnings []string, err error) {
 		}
 	}
 	if v := f.Visual.CritterAfterS; v != nil {
+		if *v < 0 {
+			return nil, warnings, fmt.Errorf("visual.critter_after_s %d is negative", *v)
+		}
 		if cfg.CritterAfter, err = duration("visual.critter_after_s", *v, time.Second); err != nil {
 			return nil, warnings, err
 		}
