@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -200,10 +201,14 @@ func Load(path string) (cfg *Config, warnings []string, err error) {
 		if *v < 0 {
 			return nil, warnings, fmt.Errorf("visual.halo_after_s %d is negative", *v)
 		}
-		cfg.HaloAfter = time.Duration(*v) * time.Second
+		if cfg.HaloAfter, err = duration("visual.halo_after_s", *v, time.Second); err != nil {
+			return nil, warnings, err
+		}
 	}
 	if v := f.Visual.CritterAfterS; v != nil {
-		cfg.CritterAfter = time.Duration(*v) * time.Second
+		if cfg.CritterAfter, err = duration("visual.critter_after_s", *v, time.Second); err != nil {
+			return nil, warnings, err
+		}
 	}
 	if cfg.CritterAfter <= cfg.HaloAfter {
 		return nil, warnings, fmt.Errorf("visual.critter_after_s %d must be greater than visual.halo_after_s %d",
@@ -213,7 +218,9 @@ func Load(path string) (cfg *Config, warnings []string, err error) {
 		if *v < 1 {
 			return nil, warnings, fmt.Errorf("visual.stale_after_h %d must be at least 1", *v)
 		}
-		cfg.StaleAfter = time.Duration(*v) * time.Hour
+		if cfg.StaleAfter, err = duration("visual.stale_after_h", *v, time.Hour); err != nil {
+			return nil, warnings, err
+		}
 	}
 
 	names := make([]string, 0, len(f.Categories))
@@ -274,6 +281,14 @@ func (c *Config) For(id category.ID) Category {
 		out.Bundled = true
 	}
 	return out
+}
+
+// duration converts v units to a Duration, rejecting values that overflow.
+func duration(key string, v int, unit time.Duration) (time.Duration, error) {
+	if int64(v) > math.MaxInt64/int64(unit) {
+		return 0, fmt.Errorf("%s %d is too large", key, v)
+	}
+	return time.Duration(v) * unit, nil
 }
 
 // resolveRelative anchors a relative sound path at the config file's

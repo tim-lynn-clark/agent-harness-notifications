@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -293,6 +294,9 @@ func TestInvalidVisualValues(t *testing.T) {
 		"short colour":                "[categories.done]\ncolor = \"#FFF\"\n",
 		"rung zero":                   "[categories.done]\nmax_rung = 0\n",
 		"rung four":                   "[categories.done]\nmax_rung = 4\n",
+		"halo overflows":              "[visual]\nhalo_after_s = 9223372037\n",
+		"critter overflows":           "[visual]\ncritter_after_s = 9223372037\n",
+		"stale overflows":             "[visual]\nstale_after_h = 2562048\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, _, err := Load(write(t, body)); err == nil {
@@ -302,14 +306,34 @@ func TestInvalidVisualValues(t *testing.T) {
 	}
 }
 
+func TestVisualBoundariesAreAccepted(t *testing.T) {
+	cfg, _, err := Load(write(t, `
+[visual]
+halo_after_s = 0
+critter_after_s = 9223372036
+stale_after_h = 1
+
+[categories.done]
+color = "#a1b2c3"
+max_rung = 3
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.HaloAfter != 0 || cfg.CritterAfter != 9223372036*time.Second || cfg.StaleAfter != time.Hour {
+		t.Fatalf("thresholds: halo %s critter %s stale %s", cfg.HaloAfter, cfg.CritterAfter, cfg.StaleAfter)
+	}
+	if d := cfg.For(category.Done); d.Color != "#a1b2c3" || d.MaxRung != 3 {
+		t.Fatalf("done: %+v", d)
+	}
+}
+
 func TestDefaultMatchesLoadOfMissingFile(t *testing.T) {
 	loaded, _, err := Load(filepath.Join(t.TempDir(), "missing.toml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := Default()
-	if d.HaloAfter != loaded.HaloAfter || d.CritterAfter != loaded.CritterAfter || d.StaleAfter != loaded.StaleAfter ||
-		d.Volume != loaded.Volume || d.Cooldown != loaded.Cooldown {
+	if d := Default(); !reflect.DeepEqual(d, loaded) {
 		t.Fatalf("Default() %+v differs from Load %+v", d, loaded)
 	}
 }
