@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gofrs/flock"
@@ -56,33 +56,62 @@ func plist(exe, stateDir string) []byte {
 
 func domain() string { return "gui/" + strconv.Itoa(os.Getuid()) }
 
-// Install writes the plist for exe, (re)loads it, and records exe.
+// Install writes the plist for exe, (re)loads it, and records exe. It holds
+// visual-install.lock, waiting for a concurrent heal to finish.
 func Install(home, stateDir, exe string, run func(string, ...string) ([]byte, error)) error {
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		return err
+	}
+	lock := flock.New(filepath.Join(stateDir, "visual-install.lock"))
+	if err := lock.Lock(); err != nil {
+		return err
+	}
+	defer lock.Unlock()
+	return install(home, stateDir, exe, run)
+}
+
+// install is Install for a caller that holds visual-install.lock. When there
+// was no plist before and loading fails, it removes the plist it wrote, so a
+// failed first install leaves nothing behind.
+func install(home, stateDir, exe string, run func(string, ...string) ([]byte, error)) error {
 	path := PlistPath(home)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(stateDir, 0o700); err != nil {
-		return err
-	}
+	_, statErr := os.Stat(path)
+	first := errors.Is(statErr, fs.ErrNotExist)
 	if err := state.WriteFileAtomic(path, plist(exe, stateDir)); err != nil {
 		return err
 	}
 	_, _ = run("launchctl", "bootout", domain()+"/"+AgentLabel) // not loaded is fine
+	// bootout returns before the job has fully stopped, so bootstrap may need a retry.
+	const attempts = 3
 	var err error
-	for i := 0; i < 3; i++ { // bootout returns before the job has fully stopped
-		var out []byte
-		if out, err = run("launchctl", "bootstrap", domain(), path); err == nil {
+	for i := 0; i < attempts; i++ {
+		if i > 0 {
+			time.Sleep(bootstrapRetry)
+		}
+		if _, err = run("launchctl", "bootstrap", domain(), path); err == nil {
 			break
 		}
-		err = fmt.Errorf("launchctl bootstrap: %v %s", err, strings.TrimSpace(string(out)))
-		time.Sleep(500 * time.Millisecond)
+		var exit *exec.ExitError
+		if errors.As(err, &exit) && len(bytes.TrimSpace(exit.Stderr)) > 0 {
+			err = fmt.Errorf("launchctl bootstrap: %v: %s", err, bytes.TrimSpace(exit.Stderr))
+		} else {
+			err = fmt.Errorf("launchctl bootstrap: %v", err)
+		}
 	}
 	if err != nil {
+		if first {
+			os.Remove(path)
+		}
 		return err
 	}
 	return state.WriteFileAtomic(filepath.Join(stateDir, installedFile), []byte(exe))
 }
+
+// bootstrapRetry is the wait between bootstrap attempts; tests shorten it.
+var bootstrapRetry = 500 * time.Millisecond
 
 // Uninstall unloads and removes the LaunchAgent.
 func Uninstall(home, stateDir string, run func(string, ...string) ([]byte, error)) error {
@@ -118,11 +147,16 @@ func Heal(home, stateDir, exe string, run func(string, ...string) ([]byte, error
 		return false, err
 	}
 	defer lock.Unlock()
+	healLocked()
 	if !healable(stateDir, exe) { // another hook may have healed meanwhile
 		return false, nil
 	}
-	return true, Install(home, stateDir, exe, run)
+	return true, install(home, stateDir, exe, run)
 }
+
+// healLocked runs once Heal holds the lock; tests use it to change the
+// install underneath.
+var healLocked = func() {}
 
 // healable reports whether the installed agent runs a binary other than exe
 // that is missing or older than exe.
@@ -137,4 +171,99 @@ func healable(stateDir, exe string) bool {
 	}
 	cur, err := os.Stat(exe)
 	return err == nil && old.ModTime().Before(cur.ModTime())
+}
+
+// Plist is what doctor needs from an installed LaunchAgent.
+type Plist struct {
+	Exe      string // ProgramArguments[0]
+	StateDir string // EnvironmentVariables.CNW_STATE_DIR
+}
+
+// ReadPlist reads the LaunchAgent plist under home.
+func ReadPlist(home string) (Plist, error) {
+	data, err := os.ReadFile(PlistPath(home))
+	if err != nil {
+		return Plist{}, err
+	}
+	v, err := parsePlist(data)
+	if err != nil {
+		return Plist{}, err
+	}
+	top, _ := v.(map[string]any)
+	var p Plist
+	if args, _ := top["ProgramArguments"].([]any); len(args) > 0 {
+		p.Exe, _ = args[0].(string)
+	}
+	if env, _ := top["EnvironmentVariables"].(map[string]any); env != nil {
+		p.StateDir, _ = env["CNW_STATE_DIR"].(string)
+	}
+	return p, nil
+}
+
+// parsePlist decodes an XML property list of dicts, arrays, strings, integers
+// and booleans into map[string]any, []any, string and bool.
+func parsePlist(data []byte) (any, error) {
+	d := xml.NewDecoder(bytes.NewReader(data))
+	for {
+		tok, err := d.Token()
+		if err != nil {
+			return nil, err
+		}
+		if se, ok := tok.(xml.StartElement); ok && se.Name.Local != "plist" {
+			return plistValue(d, se)
+		}
+	}
+}
+
+func plistValue(d *xml.Decoder, se xml.StartElement) (any, error) {
+	switch se.Name.Local {
+	case "dict":
+		m := map[string]any{}
+		key := ""
+		for {
+			tok, err := d.Token()
+			if err != nil {
+				return nil, err
+			}
+			switch t := tok.(type) {
+			case xml.EndElement:
+				return m, nil
+			case xml.StartElement:
+				if t.Name.Local == "key" {
+					if err := d.DecodeElement(&key, &t); err != nil {
+						return nil, err
+					}
+					continue
+				}
+				v, err := plistValue(d, t)
+				if err != nil {
+					return nil, err
+				}
+				m[key] = v
+			}
+		}
+	case "array":
+		var a []any
+		for {
+			tok, err := d.Token()
+			if err != nil {
+				return nil, err
+			}
+			switch t := tok.(type) {
+			case xml.EndElement:
+				return a, nil
+			case xml.StartElement:
+				v, err := plistValue(d, t)
+				if err != nil {
+					return nil, err
+				}
+				a = append(a, v)
+			}
+		}
+	case "true", "false":
+		return se.Name.Local == "true", d.Skip()
+	}
+	var s string
+	err := d.DecodeElement(&s, &se)
+	return s, err
 }
