@@ -108,6 +108,7 @@ Every `cnw` command this README asks you to run has a slash command with the sam
 | `/cnw:init` | `cnw init` |
 | `/cnw:voices [play ID [CATEGORY]]` | `cnw voices …` |
 | `/cnw:kokoro install [--from DIR] \| urls \| remove` | `cnw kokoro …` |
+| `/cnw:visual install \| uninstall \| preview [CATEGORY]` | `cnw visual …` (macOS) |
 
 Claude Code shows the output and explains any error or FAIL/WARN line; omp shows the output as
 is. `notify`, `resolve`, `turn-end` and `hook` are what the agents themselves run, so they have
@@ -261,15 +262,14 @@ cnw visual preview [CATEGORY] # run the whole escalation in 12 s
 cnw visual uninstall
 ```
 
-In a session, `/cnw:visual install` (or `uninstall`, `preview`) does the same.
-
 The first jump into Terminal or iTerm2 makes macOS ask whether `osascript` may control it. Timings,
 colours and how far each category escalates are in [Configure](#configure).
 
 One visual host serves every install. If both the Claude Code plugin and the omp extension are
-installed, they share it: after an update, the next sound event moves the LaunchAgent to the newest
-`cnw` binary. `cnw doctor` reports whether the host is running, and says so when the LaunchAgent
-runs another install's binary or one that no longer exists.
+installed, they share it: after an update, the next `cnw hook` or `cnw notify` moves the LaunchAgent
+to its own binary when the one recorded there is missing or older; a newer recorded binary is left
+alone. `cnw doctor` reports whether the host is running, and says so when the LaunchAgent runs
+another install's binary or one that no longer exists.
 
 ## Configure
 
@@ -374,7 +374,7 @@ Code only. The extension drives `cnw` through commands any agent can use:
 
 ```text
 cnw notify CATEGORY --session ID [--cwd DIR] [--pending] [--after MS]   # --pending: cancellable prompt
-cnw resolve --session ID                                                # prompt answered: cancel its sound
+cnw resolve --session ID                                                # prompt answered: cancel its sound, clear the visual
 cnw turn-end --session ID [--cwd DIR] [--error]                         # final reply on stdin
 ```
 
@@ -424,7 +424,8 @@ and pull request. Report security issues privately through the repository's **Se
 Design and behaviour: [docs/specs/2026-10-25-notification-wrapper-design.md](docs/specs/2026-10-25-notification-wrapper-design.md);
 project announcements: [docs/specs/2026-10-27-project-announcements-design.md](docs/specs/2026-10-27-project-announcements-design.md);
 Kokoro names: [docs/specs/2026-10-29-kokoro-names-design.md](docs/specs/2026-10-29-kokoro-names-design.md);
-voice selection: [docs/specs/2026-10-29-voice-selection-design.md](docs/specs/2026-10-29-voice-selection-design.md).
+voice selection: [docs/specs/2026-10-29-voice-selection-design.md](docs/specs/2026-10-29-voice-selection-design.md);
+visual signal (macOS): [docs/specs/2026-10-31-visual-attention-design.md](docs/specs/2026-10-31-visual-attention-design.md).
 
 ## License
 

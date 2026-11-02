@@ -324,17 +324,18 @@ same snapshot (§4.5). That needs a new design decision before implementation co
 
 Outcome:
 
-- Q1–Q3 passed.
+- Q1 and Q3 passed; Q2 passed in the spike but not with the full halo (below).
 - JXA corrections: attributed strings are built with `NSMutableAttributedString.alloc.init` plus
   `replaceCharactersInRangeWithString`/`addAttributesRange`, because the `initWith*` methods aren't
   bridged. Layer colours come from `CGColorCreateSRGB`, because reading `NSColor.CGColor` crashes
   osascript.
 - The spike's 0.2 % CPU figure didn't reproduce with the full halo (3.9 % still, 8–10 % moving),
   which led to the idle-timer design (§5.2). Measured afterwards: about 1 % with the pointer still
-  (the glow baseline) and about 5.6 % while it moves.
+  (the glow baseline) and about 5.6 % while it moves. The moving figure exceeds Q2's ~3 % target
+  and was accepted with the idle-timer design.
 
 ## 12. Documentation
 
-- README: a "Visual attention (macOS)" section covering install, the ladder, the orb, preview and
+- README: the "Visual signal (macOS)" section covers install, the ladder, the orb, preview and
   config.
-- CLAUDE.md "Where things are": add `internal/jump`, the embedded JXA script, and `/cnw:visual`.
+- CLAUDE.md "Where things are" lists `internal/jump`, the embedded JXA script and `/cnw:visual`.

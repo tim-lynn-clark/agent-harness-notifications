@@ -297,7 +297,8 @@ func expandHome(p, home string) string {
 }
 
 // Template is the commented default file written by `cnw init`.
-const Template = `# cnw — Claude Code attention sounds. All durations are in milliseconds.
+const Template = `# cnw — Claude Code attention sounds. Durations are in milliseconds unless the
+# key says _s (seconds) or _h (hours).
 # Categories: question, plan_approval, permission, mcp_input, done_question,
 # done, done_background, error, usage_limit, idle_reminder.
 # Per-category keys: sound, enabled, delay_ms, volume, color, max_rung.

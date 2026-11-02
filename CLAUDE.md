@@ -17,7 +17,7 @@ plugin and an omp extension around one Go binary. User-facing behaviour is in `R
 | `sounds/<voice>/*.wav` | Bundled default clips, one directory per Kokoro voice (`kokoro_voice` picks one), one clip per category |
 | `docs/specs/` | Design specs: the source of truth for behaviour; update them with behaviour changes |
 | `docs/plans/` | Historical implementation plans; they predate the rename and still use the old name, so don't edit them |
-| `.github/workflows/` | `release.yml` publishes a version tag to `release`; `smoke.yml` runs the Linux and Windows end-to-end check and `gitleaks.yml` scans the full history for secrets, both on every push and pull request |
+| `.github/workflows/` | `release.yml` publishes a version tag to `release`; `smoke.yml` runs the Linux and Windows end-to-end check plus the macOS visual host check (`visual-macos`), and `gitleaks.yml` scans the full history for secrets, both on every push and pull request |
 | `.githooks/pre-commit` | Runs `gitleaks` on staged changes; enable with `git config core.hooksPath .githooks` |
 | `scripts/checkwav/` | Asserts a recorded clip is audible and levelled; the smoke workflow runs it on a spoken name |
 
