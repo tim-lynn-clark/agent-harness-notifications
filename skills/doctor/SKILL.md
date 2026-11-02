@@ -1,5 +1,5 @@
 ---
-description: Check the cnw setup (config, clips, audio player, spoken names) and show recent sound events
+description: Check the cnw setup (config, clips, audio player, spoken names, macOS visual signal) and show recent sound events
 disable-model-invocation: true
 # omp skips skills marked disabled; its /cnw:* commands come from omp/cnw.ts instead, because omp
 # neither runs !`…` nor expands ${CLAUDE_PLUGIN_ROOT}. Claude Code ignores this key.

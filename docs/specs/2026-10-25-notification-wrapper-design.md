@@ -1,6 +1,6 @@
 # agent-harness-notifications — Specification
 
-Status: draft for review · Date: 2026-10-25 · Target: Claude Code ≥ 2.1.288
+Status: implemented · Date: 2026-10-25 · Target: Claude Code ≥ 2.1.288
 
 ## 1. Problem
 
@@ -29,10 +29,12 @@ need to a user-chosen sound so the engineer can decide *by ear* whether to leave
 
 ## 3. Non-goals
 
-- Agents other than Claude Code (Codex, OpenCode, Grok, …) running inside Orca.
-- Desktop notification banners, chips, badges — Orca already provides these; this project is audio only.
+- Agents other than Claude Code and omp (§13).
+- Desktop notification banners, chips, badges. Orca already provides these. The opt-in macOS visual
+  signal is a separate design ([visual attention design](2026-10-31-visual-attention-design.md)).
 - Auto-approving, denying, or answering anything.
-- Text-to-speech, per-project config overrides, quiet hours, focus detection.
+- Per-project config overrides, quiet hours, focus detection. (Spoken project names are the
+  [project announcements design](2026-10-27-project-announcements-design.md).)
 - Model-based classification of end-of-turn text (heuristic only, §5.2).
 
 ## 4. Research basis
@@ -265,13 +267,16 @@ not a concern.
 | Command | Behaviour |
 |---|---|
 | `cnw hook` | Read one event JSON from stdin; classify (§5); update state (§6); spawn `cnw fire` when a sound is due. Always exits 0 and writes nothing to stdout, so it never emits a hook decision. |
-| `cnw fire --session ID --seq N --category C --delay MS` | Internal. Detached. Sleeps, re-checks pending state when `seq` > 0, enforces cooldown, plays the sound under the global playback lock. |
+| `cnw fire --session ID --seq N --category C --delay MS` | Internal. Detached. Sleeps; when `seq` > 0, a read-only check logs `cancelled` and stops if the prompt is no longer pending, without waiting for the lock; then takes the global playback lock, re-checks pending state and enforces cooldown under it (`app.Claim`), and plays the sound. |
 | `cnw play CATEGORY` | Play a category's configured sound now, ignoring delay and cooldown. For tuning the mapping. |
 | `cnw init` | Write the default config if none exists. |
 | `cnw notify CATEGORY --session ID [--cwd DIR] [--pending] [--after MS]` | Direct signal (§13). Schedules the category's sound after `MS` + `delay_ms`; `--pending` first registers it as the session's prompt so `resolve` cancels it. `--cwd` enables the project announcement (announcement design §9). |
 | `cnw resolve --session ID` | Direct signal. Clears the session's pending prompt and its visual attention. |
 | `cnw turn-end --session ID [--cwd DIR] [--error]` | Direct signal. Clears the pending prompt and plays `error`, else `done_question` when the final reply on stdin passes §5.2, else `done`. `--cwd` as for `notify`. |
-| `cnw doctor` | Report: Claude Code version (≥ 2.1.288), config path and validation errors, each configured sound file's existence, audio backend found, Windows Git Bash presence, and the last 20 classified events. |
+| `cnw voices [play ID [CATEGORY]]` | List the bundled voices or hear one ([voice selection design](2026-10-29-voice-selection-design.md)). |
+| `cnw kokoro install [--from DIR] \| urls \| remove` | Opt-in Kokoro engine for spoken names ([Kokoro names design](2026-10-29-kokoro-names-design.md)). |
+| `cnw visual …` | Opt-in macOS visual signal ([visual attention design](2026-10-31-visual-attention-design.md) §8). |
+| `cnw doctor` | Report: Claude Code version (≥ 2.1.288), config path and validation errors, the bundled voice, each configured sound file's existence, the announcement mode and what speaks names, audio backend found, Windows Git Bash presence, the Orca sound reminder inside Orca, the macOS visual checks (visual design §9), and the last 20 classified events. |
 
 Packages:
 
@@ -292,7 +297,7 @@ shell would read a different directory than the hooks write.
   last_elicitation_ms, last_played_ms, attention: {session_id, category, since_ms, label, cwd, jump,
   tool_name, agent_id} | absent, attention_cleared_ms}` (the attention fields are the
   [visual attention design](2026-10-31-visual-attention-design.md) §4.1). Writes are write-temp-then-rename. Files untouched for
-  7 days are deleted opportunistically by `cnw hook`.
+  7 days are deleted by `cnw hook` when it handles a `SessionEnd` event; omp sessions never trigger it.
 - `play.lock` — exclusive lock serialising playback across sessions, so overlapping agents' sounds
   stay distinguishable. `cnw fire` waits at most 15 s for the lock, then drops the sound (15 s covers
   a full clip plus spoken name; see the announcement design §5); it still marks the session waiting

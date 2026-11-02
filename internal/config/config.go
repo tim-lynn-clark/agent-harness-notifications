@@ -360,8 +360,9 @@ func expandHome(p, home string) string {
 }
 
 // Template is the commented default file written by `cnw init`.
-const Template = `# cnw — Claude Code attention sounds. Durations are in milliseconds unless the
-# key says _s (seconds) or _h (hours).
+const Template = `# cnw — attention sounds (and, on macOS, a visual signal) for Claude Code and
+# omp. Durations are in milliseconds unless the key says _s (seconds) or _h
+# (hours).
 # Categories: question, plan_approval, permission, mcp_input, done_question,
 # done, done_background, error, usage_limit, idle_reminder.
 # Per-category keys: sound, enabled, delay_ms, volume, color, max_rung.
@@ -385,11 +386,12 @@ voice = "Matilda (Premium)"
 # [names]
 # "agent-harness-notifications" = "notifier"
 
-# Visual signal on macOS after ` + "`cnw visual install`" + `: a glow around the screen
-# edge, then a halo around the pointer, then a desk critter, while a session
-# waits on you. Per category: color = "#RRGGBB", max_rung = 1 (glow), 2 (halo)
-# or 3 (critter). critter = "random" (a different one each time), "blob",
-# "ghost", "cat", "deskbot", "tintoy" or "drone"; list them: cnw visual critters
+# Visual signal, macOS only (no effect elsewhere), after ` + "`cnw visual install`" + `:
+# a glow around the screen edge, then a halo around the pointer, then a desk
+# critter, while a session waits on you. Per category: color = "#RRGGBB",
+# max_rung = 1 (glow), 2 (halo) or 3 (critter). critter = "random" (a different
+# one each time), "blob", "ghost", "cat", "deskbot", "tintoy" or "drone"; list
+# them: cnw visual critters
 # [visual]
 # halo_after_s = 60
 # critter_after_s = 120
