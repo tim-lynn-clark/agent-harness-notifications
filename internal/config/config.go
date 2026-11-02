@@ -68,12 +68,13 @@ func ValidCritter(id string) bool {
 }
 
 type categoryFile struct {
-	Sound   string   `toml:"sound"`
-	Enabled *bool    `toml:"enabled"`
-	DelayMS *int     `toml:"delay_ms"`
-	Volume  *float64 `toml:"volume"`
-	Color   *string  `toml:"color"`
-	MaxRung *int     `toml:"max_rung"`
+	Sound       string   `toml:"sound"`
+	Enabled     *bool    `toml:"enabled"`
+	DelayMS     *int     `toml:"delay_ms"`
+	Volume      *float64 `toml:"volume"`
+	Color       *string  `toml:"color"`
+	MaxRung     *int     `toml:"max_rung"`
+	ClearAfterS *int     `toml:"clear_after_s"`
 }
 
 type visualFile struct {
@@ -103,6 +104,9 @@ type Category struct {
 	Volume  float64
 	Color   string // #RRGGBB of the visual signal
 	MaxRung int    // highest visual rung, 1-3
+	// ClearAfter ends the visual signal this long after it began, even with the
+	// session still waiting; 0 keeps it until cleared (visual attention spec §4.4).
+	ClearAfter time.Duration
 }
 
 // Config is a loaded, validated configuration.
@@ -295,6 +299,14 @@ func Load(path string) (cfg *Config, warnings []string, err error) {
 		if c.MaxRung != nil && (*c.MaxRung < 1 || *c.MaxRung > 3) {
 			return nil, warnings, fmt.Errorf("categories.%s.max_rung %d must be 1, 2 or 3", name, *c.MaxRung)
 		}
+		if v := c.ClearAfterS; v != nil {
+			if *v < 0 {
+				return nil, warnings, fmt.Errorf("categories.%s.clear_after_s %d is negative", name, *v)
+			}
+			if _, err := duration("categories."+name+".clear_after_s", *v, time.Second); err != nil {
+				return nil, warnings, err
+			}
+		}
 		c.Sound = resolveRelative(c.Sound, filepath.Dir(path))
 		cfg.categories[id] = c
 	}
@@ -305,7 +317,7 @@ func Load(path string) (cfg *Config, warnings []string, err error) {
 // without a configured sound uses <BundledDir>/<KokoroVoice>/<id>.wav when BundledDir is set.
 func (c *Config) For(id category.ID) Category {
 	d, _ := category.DefaultFor(id)
-	out := Category{Enabled: d.Enabled, Delay: d.Delay, Volume: c.Volume, Color: d.Color, MaxRung: d.MaxRung}
+	out := Category{Enabled: d.Enabled, Delay: d.Delay, Volume: c.Volume, Color: d.Color, MaxRung: d.MaxRung, ClearAfter: d.ClearAfter}
 	if f, ok := c.categories[id]; ok {
 		out.Sound = expandHome(f.Sound, c.home)
 		if f.Enabled != nil {
@@ -322,6 +334,9 @@ func (c *Config) For(id category.ID) Category {
 		}
 		if f.MaxRung != nil {
 			out.MaxRung = *f.MaxRung
+		}
+		if f.ClearAfterS != nil {
+			out.ClearAfter = time.Duration(*f.ClearAfterS) * time.Second
 		}
 	}
 	if out.Sound == "" && c.BundledDir != "" {
@@ -365,7 +380,8 @@ const Template = `# cnw — attention sounds (and, on macOS, a visual signal) fo
 # (hours).
 # Categories: question, plan_approval, permission, mcp_input, done_question,
 # done, done_background, error, usage_limit, idle_reminder.
-# Per-category keys: sound, enabled, delay_ms, volume, color, max_rung.
+# Per-category keys: sound, enabled, delay_ms, volume, color, max_rung,
+# clear_after_s.
 # A category without a sound plays the plugin's bundled voice clip
 # (sounds/<kokoro_voice>/<category>.wav); set enabled = false to silence it.
 # Relative sound paths are resolved against this file's directory. On Windows
@@ -391,9 +407,11 @@ voice = "Matilda (Premium)"
 # after ` + "`cnw visual install`" + `:
 # a glow around the screen edge, then a halo around the pointer, then a desk
 # critter, while a session waits on you. Per category: color = "#RRGGBB",
-# max_rung = 1 (glow), 2 (halo) or 3 (critter). critter = "random" (a different
-# one each time), "blob", "ghost", "cat", "deskbot", "tintoy" or "drone"; list
-# them: cnw visual critters
+# max_rung = 1 (glow), 2 (halo) or 3 (critter), clear_after_s = seconds until
+# the visual signal ends on its own (0: only when you reply; default 300 for
+# done, done_background, error and usage_limit, 0 for the rest).
+# critter = "random" (a different one each time), "blob", "ghost", "cat",
+# "deskbot", "tintoy" or "drone"; list them: cnw visual critters
 # [visual]
 # halo_after_s = 60
 # critter_after_s = 120
