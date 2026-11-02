@@ -31,11 +31,7 @@ func mustApply(t *testing.T, st state.Store, e event.Event, now time.Time) (clas
 
 func claim(t *testing.T, st state.Store, session string, seq int64, now time.Time, cooldown time.Duration) string {
 	t.Helper()
-	out, err := Claim(st, session, seq, now, cooldown, state.Attention{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return out
+	return claimWith(t, st, session, seq, now, cooldown, state.Attention{})
 }
 
 func TestRegistrationPlaysNothing(t *testing.T) {
@@ -302,11 +298,11 @@ func TestIdleReminderKeepsTheLadderReplacementResetsIt(t *testing.T) {
 	st := state.Store{Dir: t.TempDir()}
 	claimWith(t, st, "s", 0, t0, 0, att(category.Done, t0))
 	claimWith(t, st, "s", 0, t0.Add(time.Minute), 0, att(category.IdleReminder, t0.Add(time.Minute)))
-	if a := attentionOf(t, st, "s"); a.Category != "done" || a.SinceMS != t0.UnixMilli() {
+	if a := attentionOf(t, st, "s"); a == nil || a.Category != "done" || a.SinceMS != t0.UnixMilli() {
 		t.Fatalf("reminder changed the attention: %+v", a)
 	}
 	claimWith(t, st, "s", 0, t0.Add(2*time.Minute), 0, att(category.Error, t0.Add(2*time.Minute)))
-	if a := attentionOf(t, st, "s"); a.Category != "error" || a.SinceMS != t0.Add(2*time.Minute).UnixMilli() {
+	if a := attentionOf(t, st, "s"); a == nil || a.Category != "error" || a.SinceMS != t0.Add(2*time.Minute).UnixMilli() {
 		t.Fatalf("a new category must restart the ladder: %+v", a)
 	}
 }
@@ -335,6 +331,9 @@ func TestStopClearsThenItsOwnDoneShows(t *testing.T) {
 	claimWith(t, st, "s", 0, t0, 0, att(category.Permission, t0))
 	stop := t0.Add(time.Minute)
 	mustApply(t, st, event.Event{HookEventName: "Stop", SessionID: "s"}, stop)
+	if a := attentionOf(t, st, "s"); a != nil {
+		t.Fatalf("Stop must clear the earlier attention: %+v", a)
+	}
 	claimWith(t, st, "s", 0, stop.Add(time.Second), 0, att(category.Done, stop))
 	if a := attentionOf(t, st, "s"); a == nil || a.Category != "done" {
 		t.Fatalf("got %+v", a)
@@ -349,6 +348,73 @@ func TestResolveClearsAttention(t *testing.T) {
 	}
 	if a := attentionOf(t, st, "omp"); a != nil {
 		t.Fatalf("got %+v", a)
+	}
+}
+
+func TestResolveSuppressesALaterStaleClaim(t *testing.T) {
+	st := state.Store{Dir: t.TempDir()}
+	if err := Resolve(st, "omp", t0.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	// done was triggered at t0, before the resolve, and claimed after it.
+	claimWith(t, st, "omp", 0, t0.Add(2*time.Second), 0, att(category.Done, t0))
+	if a := attentionOf(t, st, "omp"); a != nil {
+		t.Fatalf("stale claim set %+v", a)
+	}
+}
+
+func TestPromptAttentionClearsOnlyForTheSameAgent(t *testing.T) {
+	st := state.Store{Dir: t.TempDir()}
+	mustApply(t, st, perm("s", "Bash", "agent-1"), t0)
+	_, seq := mustApply(t, st, prompt("s"), t0.Add(6*time.Second))
+	claimWith(t, st, "s", seq, t0.Add(6*time.Second), 0, att(category.Permission, t0.Add(6*time.Second)))
+
+	mustApply(t, st, event.Event{HookEventName: "PostToolUse", SessionID: "s", ToolName: "Bash", AgentID: "agent-2"}, t0.Add(7*time.Second))
+	if attentionOf(t, st, "s") == nil {
+		t.Fatal("the same tool in another agent must not clear the attention")
+	}
+	mustApply(t, st, event.Event{HookEventName: "PostToolUse", SessionID: "s", ToolName: "Bash", AgentID: "agent-1"}, t0.Add(8*time.Second))
+	if a := attentionOf(t, st, "s"); a != nil {
+		t.Fatalf("the same agent's tool must clear it: %+v", a)
+	}
+}
+
+// The rest of visual spec §4.3.
+func TestAttentionClearRows(t *testing.T) {
+	cases := []struct {
+		name      string
+		attention category.ID
+		tool      string // the prompt's tool, for a permission attention
+		ev        event.Event
+		cleared   bool
+	}{
+		{"PermissionDenied", category.Permission, "Bash", event.Event{HookEventName: "PermissionDenied", ToolName: "Bash"}, true},
+		{"ElicitationResult", category.MCPInput, "", event.Event{HookEventName: "ElicitationResult"}, true},
+		{"SessionEnd", category.Done, "", event.Event{HookEventName: "SessionEnd"}, true},
+		{"StopFailure", category.Permission, "Bash", event.Event{HookEventName: "StopFailure"}, true},
+		{"PostToolUseFailure, same tool", category.Permission, "Bash", event.Event{HookEventName: "PostToolUseFailure", ToolName: "Bash"}, true},
+		{"error survives PostToolUse", category.Error, "", event.Event{HookEventName: "PostToolUse", ToolName: "Bash"}, false},
+		{"usage_limit survives PostToolUse", category.UsageLimit, "", event.Event{HookEventName: "PostToolUse", ToolName: "Bash"}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			st := state.Store{Dir: t.TempDir()}
+			if c.tool != "" {
+				mustApply(t, st, perm("s", c.tool, ""), t0)
+				_, seq := mustApply(t, st, prompt("s"), t0.Add(6*time.Second))
+				claimWith(t, st, "s", seq, t0.Add(6*time.Second), 0, att(c.attention, t0.Add(6*time.Second)))
+			} else {
+				claimWith(t, st, "s", 0, t0.Add(6*time.Second), 0, att(c.attention, t0.Add(6*time.Second)))
+			}
+			if attentionOf(t, st, "s") == nil {
+				t.Fatal("setup: no attention")
+			}
+			c.ev.SessionID = "s"
+			mustApply(t, st, c.ev, t0.Add(10*time.Second))
+			if got := attentionOf(t, st, "s") == nil; got != c.cleared {
+				t.Fatalf("cleared = %v, want %v", got, c.cleared)
+			}
+		})
 	}
 }
 
