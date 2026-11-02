@@ -10,7 +10,7 @@
         "repo": "tim-lynn-clark/agent-harness-notifications",
         "ref": "release"
       },
-      "description": "Distinct spoken alerts for each kind of coding-agent attention request (questions, approvals, completion, errors), naming the project; optional on-screen signal on macOS. For Claude Code and omp."
+      "description": "Distinct spoken alerts for each kind of coding-agent attention request (questions, approvals, completion, errors), naming the project (macOS, or anywhere with Kokoro); optional on-screen signal on macOS. For Claude Code and omp."
     },
     {
       "name": "cnw-dev",

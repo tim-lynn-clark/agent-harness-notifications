@@ -58,7 +58,7 @@ func TestDoctorFlagsAPlistForAnotherStateDir(t *testing.T) {
 
 func TestParsePreviewArgs(t *testing.T) {
 	for _, c := range []struct {
-		args        []string
+		args         []string
 		cat, critter string
 	}{
 		{nil, "permission", ""},

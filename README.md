@@ -39,16 +39,17 @@ before then stays silent.
 ## Platform support
 
 Binaries are built for macOS (Apple silicon and Intel), Linux (x64 and arm64) and Windows (x64).
-On any other platform, Windows on ARM included, the launcher exits quietly: no sound and no
-message.
+On any other platform the launcher exits quietly: no sound and no message. On Windows on ARM, a
+native arm64 Git Bash gets that quiet exit; an x64 Git Bash under emulation reports `x86_64` and
+runs the x64 build (untested).
 
 | Feature | macOS | Linux | Windows (Git Bash) | WSL 2 |
 |---|---|---|---|---|
 | Sounds (hooks, `notify`, `turn-end`) | yes (`afplay`) | yes (`pw-play`, `paplay` or `aplay`) | yes (PowerShell's player) | yes (`paplay` after installing `pulseaudio-utils`; else Windows' player through interop) |
 | `volume` | yes | yes, except with `aplay` | ignored | yes with `paplay`; ignored through interop |
-| Sound formats | WAV, plus MP3/M4A and other `afplay` formats | WAV, plus what the player supports | WAV only | as Linux |
+| Sound formats | WAV, plus MP3/M4A and other `afplay` formats | WAV, plus what the player supports | WAV only | as Linux with `paplay`; WAV only through the `powershell.exe` fallback |
 | Spoken names, default | `say` (voice Matilda (Premium); chimes if it's missing) | chimes | chimes | chimes |
-| Spoken names, Kokoro (opt-in) | yes | x64 (checked in CI); arm64 untested | x64 (checked in CI) | yes |
+| Spoken names, Kokoro (opt-in) | Apple silicon; Intel untested | x64 (checked in CI); arm64 untested | x64 (checked in CI) | yes |
 | Slash commands, Claude Code | yes | yes | yes | yes |
 | Slash commands, omp | yes | yes | yes | yes |
 | Visual signal (glow, halo, critters, orb) | yes (opt-in; untested on Intel Macs) | no | no | no |
@@ -57,8 +58,9 @@ message.
 | `cnw doctor` | everything, plus the visual signal | everything but the visual signal | everything but the visual signal, plus Git Bash | as Linux |
 
 The visual signal, the orb and jump are **macOS only for now**. On Linux, Windows and WSL,
-`cnw visual` prints `cnw visual: only macOS is supported so far`, and the `[visual]` keys have no
-effect. Sessions still record that they are waiting, which is harmless. A Windows version is
+`cnw visual` prints `cnw visual: only macOS is supported so far`, and the `[visual]` keys do
+nothing. They are still validated, though: an invalid value is a config error, and a config error
+silences every sound. Sessions still record that they are waiting, which is harmless. A Windows version is
 planned: see [the Windows visual handoff](docs/plans/2026-11-02-windows-visual-handoff.md).
 
 ## Install

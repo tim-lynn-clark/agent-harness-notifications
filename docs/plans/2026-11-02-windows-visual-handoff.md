@@ -55,7 +55,7 @@ Windows) or config. Ask before registering any autostart entry on the user's acc
 | Preview/heartbeat helpers | `internal/visual/host.go` | `WritePreview`, `HostAlive` (15 s) |
 | Config keys + validation | `internal/config` | `[visual]` and per-category `color`, `max_rung` |
 | Windows file retries | `internal/state/state.go` `renameRetry`, `readFileRetry` (~0.5 s on transient sharing violations) | test: `state_windows_test.go` |
-| Hidden-console child processes | `cmd/cnw/detach_windows.go` | `CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP`, `HideWindow` |
+| Hidden-console child processes | `cmd/cnw/detach_windows.go` | `CREATE_NO_WINDOW \| CREATE_NEW_PROCESS_GROUP`, `HideWindow` |
 | Windows sound | `internal/audio/audio.go` | PowerShell player (`powershell -NoProfile -NonInteractive -Command …`); WSL uses `powershell.exe` via interop |
 
 **Attention lifecycle (summary).** Set when `Claim` returns Play or Cooldown, or by `MarkWaiting`
@@ -164,7 +164,7 @@ the spike/brainstorm, then copy the accepted rows into the spec.
 
 | # | Feature | Windows question | Acceptance |
 |---|---|---|---|
-| 1 | Overlay windows | Per monitor `WS_EX_LAYERED|WS_EX_TRANSPARENT|WS_EX_TOPMOST|WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE` popup with per-pixel alpha (`UpdateLayeredWindow`), or WPF `AllowsTransparency` + `WS_EX_TRANSPARENT`? Per-monitor DPI v2 awareness? Shown on all virtual desktops (tool windows generally are; verify)? Over full-screen apps/games (likely not over exclusive full-screen — document)? | Clicks pass through everywhere; never steals focus; no taskbar/Alt-Tab entry; visible on every monitor and every virtual desktop; correct at 100/150/200 % scaling; rebuilt on monitor add/remove/resolution change (`WM_DISPLAYCHANGE`) within one poll. |
+| 1 | Overlay windows | Per monitor `WS_EX_LAYERED\|WS_EX_TRANSPARENT\|WS_EX_TOPMOST\|WS_EX_TOOLWINDOW\|WS_EX_NOACTIVATE` popup with per-pixel alpha (`UpdateLayeredWindow`), or WPF `AllowsTransparency` + `WS_EX_TRANSPARENT`? Per-monitor DPI v2 awareness? Shown on all virtual desktops (tool windows generally are; verify)? Over full-screen apps/games (likely not over exclusive full-screen — document)? | Clicks pass through everywhere; never steals focus; no taskbar/Alt-Tab entry; visible on every monitor and every virtual desktop; correct at 100/150/200 % scaling; rebuilt on monitor add/remove/resolution change (`WM_DISPLAYCHANGE`) within one poll. |
 | 2 | Capture exclusion | `SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE)` (Win10 2004+) — works for layered windows? Teams/Zoom/OBS/Snipping Tool? | Overlays absent from a Teams/Zoom share and a Snipping Tool/OBS capture; doctor or docs state the minimum build. |
 | 3 | Aurora | Breathing edge glow: who drives the 2.4 s animation (DWM/WPF compositor vs our timer redrawing)? | N-way segmented edges in snapshot colours; idle CPU target agreed with user (macOS: ~1 % idle). |
 | 4 | Halo | Cursor tracking: `GetCursorPos` polling with an idle-stop timer like macOS, or a low-level mouse hook (`WH_MOUSE_LL` — avoid unless needed; AV heuristics)? | Follows the pointer on its monitor only; label placement/flip; `+N`; moving CPU measured and agreed (macOS: ~5.6 %). |
@@ -175,9 +175,9 @@ the spike/brainstorm, then copy the accepted rows into the spec.
 | 9 | Autostart + supervision | Replace LaunchAgent: HKCU `…\CurrentVersion\Run` value, Startup-folder `.lnk`, or a per-user Task Scheduler task (`schtasks` / XML) with restart-on-failure? Who restarts on crash but not on exit 0 — Task Scheduler restart-on-failure, or `cnw visual host` as its own supervisor around a child? | Starts at logon with no console window; crash (non-zero) → restarted; *Quit visuals* (exit 0) → stays down until next logon or `cnw visual install`; `install` idempotent with blocking `visual-install.lock`; first-install failure leaves nothing behind; `uninstall` removes everything. |
 | 10 | Heal | Same rule as `visual.Heal` (missing or older recorded binary; TryLock; re-check), but re-registering the Windows autostart and restarting the host. Note Windows can't overwrite a running `.exe` — plugin upgrades write a new path. | Two installs (Claude Code + omp copies sharing a state dir) settle on the newest; heal runs deferred after event handling; never fails the hook. |
 | 11 | `cnw visual` commands | Lift the GOOS gate per subcommand; `execReplace` doesn't exist on Windows → `host` must run the renderer as a child (or in-process if pure Go) and propagate its exit code. | `install`/`uninstall`/`preview`/`critters`/`host`/`jump` work on Windows; Linux keeps a clear "not supported" message; usage text updated. |
-| 12 | Doctor | Windows lines mirroring §9: autostart entry readable, its binary exists, other install (INFO), state-dir mismatch, heartbeat stale → log path, renderer prerequisite missing (e.g. PowerShell/.NET/WebView2 per approach), not installed (INFO), capture-exclusion unsupported on this build (WARN). | `cnw doctor` on Windows prints them; unit tests with injected readers like `visual_test.go`. |
+| 12 | Doctor | Windows lines mirroring macOS spec §9: autostart entry readable, its binary exists, other install (INFO), state-dir mismatch, host quit from its menu (exit 0) → INFO not FAIL, otherwise heartbeat stale → FAIL with how to restart, naming the log only when non-empty, renderer prerequisite missing (e.g. PowerShell/.NET/WebView2 per approach), not installed (INFO), capture-exclusion unsupported on this build (WARN). | `cnw doctor` on Windows prints them; unit tests with injected readers like `visual_test.go`. |
 | 13 | Slash commands | `skills/visual/SKILL.md`, `omp/cnw.ts` — wording says macOS. | Platform text accurate on both. |
-| 14 | CI | Add host steps to `smoke (windows-2022)` mirroring the `macos-15` job: heartbeat within 20 s; `preview` each critter 13 s apart; no `cnw visual host:` lines; process alive; heartbeat advanced. Runner has an interactive desktop? (GitHub Windows runners run as a service session — verify windows can be created.) | Job green and non-required until proven stable (same policy as macOS). |
+| 14 | CI | A separate, non-required job on `windows-2022` mirroring `visual-macos` (leave the required `smoke (windows-2022)` alone): heartbeat within 20 s; `preview` each critter 13 s apart; no `cnw visual host:` lines; process alive; heartbeat advanced. Runner has an interactive desktop? (GitHub Windows runners run as a service session — verify windows can be created.) | Job green and non-required until proven stable (same policy as macOS). |
 
 ## 4. Candidate renderer approaches (evaluate with the user — do not choose)
 
@@ -252,8 +252,9 @@ If 1, 3 or 6 fails for an approach, drop it and return to the user before contin
 
 ## 5. WSL (question for the user)
 
-When Claude Code runs inside WSL, `bin/cnw` picks `linux-amd64` and cnw runs as Linux: the state
-dir is the Linux cache dir, sound already goes through `powershell.exe` interop
+When Claude Code runs inside WSL, `bin/cnw` picks `linux-amd64` or `linux-arm64` by architecture
+and cnw runs as Linux: the state dir is the Linux cache dir, and sound plays through `paplay` when
+`pulseaudio-utils` is installed, falling back to `powershell.exe` interop otherwise
 (`internal/audio`, `WSLBackend`). An overlay must run on the **Windows** side. Options to put to
 the user:
 
@@ -282,7 +283,7 @@ the user:
 - CPU via Task Manager/`Get-Counter` idle, pointer moving, critter idling; report numbers.
 - `cnw doctor` lines in each state; `cnw visual uninstall` leaves nothing (registry/task/startup
   entry, files).
-- CI: extended `smoke (windows-2022)` job (§3 row 14).
+- CI: a separate, non-required `windows-2022` visual job mirroring `visual-macos` (§3 row 14).
 
 **Docs to update.**
 
