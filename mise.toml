@@ -1,0 +1,10 @@
+# Development tools for this repository; `mise install` sets them up.
+# CI does not read this file: it installs Go from go.mod's toolchain directive (actions/setup-go)
+# and gitleaks by SHA-256 in .github/workflows/gitleaks.yml. scripts/toolpins fails `go test ./...`
+# when go or gitleaks here differs from those, so bump both sides together.
+# ffmpeg (needed only by scripts/make-sounds.sh) comes from the system package manager.
+
+[tools]
+go = "1.27.3"
+gitleaks = "8.30.1"
+uv = "0.13.6"

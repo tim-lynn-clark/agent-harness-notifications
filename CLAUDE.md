@@ -23,10 +23,12 @@ User-facing behaviour is in `README.md`.
 | `.githooks/pre-commit` | Runs `gitleaks` on staged changes; enable with `git config core.hooksPath .githooks` |
 | `scripts/checkwav/` | Asserts a recorded clip is audible and levelled; the smoke workflow runs it on a spoken name |
 | `scripts/hostscript/` | Prints the joined visual host script (`host.js` + `critters.js`) for CI's `osacompile` |
+| `scripts/toolpins/` | Test that fails when `mise.toml` disagrees with the Go and gitleaks versions CI installs |
 
 ## Build and test
 
 ```bash
+mise install            # Go, gitleaks and uv at the versions pinned in mise.toml
 go test ./...
 ./scripts/build.sh      # cross-compiles all 5 targets into bin/<os>-<arch>/ (CGO_ENABLED=0)
 claude plugin validate .
@@ -36,6 +38,11 @@ claude plugin validate .
   for this reason.
 - `bin/*/` is gitignored on `main`; never commit binaries there.
 - `cnw doctor` is the end-to-end check for a local setup.
+- `mise.toml` pins local tools only. CI installs Go from the `toolchain` line in `go.mod` (`go 1.25.0`
+  stays the minimum language version) and gitleaks from the SHA-256 pin in `gitleaks.yml`. To bump
+  either, change `mise.toml` too; `scripts/toolpins` fails `go test ./...` when they disagree.
+  ffmpeg (for `scripts/make-sounds.sh`) isn't in `mise.toml`; install it from the system package
+  manager.
 - Secrets: `.githooks/pre-commit` and `.github/workflows/gitleaks.yml` both run gitleaks (pinned to
   8.30.1 by SHA-256 in the workflow). Never bypass the hook with `--no-verify` for a real finding;
   for a false positive, add a `.gitleaks.toml` allowlist rather than disabling the check.

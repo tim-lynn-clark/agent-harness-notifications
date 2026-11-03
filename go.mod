@@ -2,6 +2,8 @@ module github.com/tim-lynn-clark/agent-harness-notifications
 
 go 1.25.0
 
+toolchain go1.27.3
+
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/gofrs/flock v0.13.1
