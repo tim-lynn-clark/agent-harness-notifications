@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/BurntSushi/toml"
@@ -22,7 +23,8 @@ func read(t *testing.T, name string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return string(b)
+	// Windows checkouts may have CRLF line endings, which (?m)$ does not match before.
+	return strings.ReplaceAll(string(b), "\r\n", "\n")
 }
 
 // find returns the first submatch of pattern in the named file.
