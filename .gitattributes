@@ -1,0 +1,7 @@
+# Store and check out text files with LF on every platform, including Windows CI runners
+# (Git for Windows defaults to core.autocrlf=true).
+* text=auto eol=lf
+
+# Binary assets: never convert.
+*.wav binary
+*.bz2 binary
