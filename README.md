@@ -473,12 +473,13 @@ Known limits:
 ## Development
 
 ```bash
+mise install                          # Go, gitleaks and uv pinned in mise.toml (optional)
 git config core.hooksPath .githooks   # once per clone: gitleaks scans staged changes before each commit
 go test ./...
 ```
 
-The pre-commit hook needs [gitleaks](https://github.com/gitleaks/gitleaks) on `PATH`
-(`brew install gitleaks`) and refuses to commit without it. CI scans the full history on every push
+The pre-commit hook needs [gitleaks](https://github.com/gitleaks/gitleaks) (`mise install` or
+`brew install gitleaks`) and refuses to commit without it. CI scans the full history on every push
 and pull request. Report security issues privately through the repository's **Security** tab.
 
 Design and behaviour: [docs/specs/2026-10-25-notification-wrapper-design.md](docs/specs/2026-10-25-notification-wrapper-design.md);

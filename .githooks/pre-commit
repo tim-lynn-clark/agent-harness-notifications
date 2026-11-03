@@ -3,10 +3,17 @@
 # Enable once per clone: git config core.hooksPath .githooks
 set -eu
 
-if ! command -v gitleaks >/dev/null 2>&1; then
-  echo "pre-commit: gitleaks is not installed (brew install gitleaks, or see" >&2
-  echo "https://github.com/gitleaks/gitleaks#installing); refusing to commit unscanned." >&2
-  exit 1
+set -- git --pre-commit --staged --redact --no-banner --exit-code 1
+
+if command -v gitleaks >/dev/null 2>&1; then
+  exec gitleaks "$@"
+fi
+# Shells without `mise activate` (IDE git integrations, non-interactive shells) still have the
+# version pinned in mise.toml, if `mise install` has run.
+if command -v mise >/dev/null 2>&1 && mise which gitleaks >/dev/null 2>&1; then
+  exec mise exec -- gitleaks "$@"
 fi
 
-exec gitleaks git --pre-commit --staged --redact --no-banner --exit-code 1
+echo "pre-commit: gitleaks is not installed (mise install, brew install gitleaks, or see" >&2
+echo "https://github.com/gitleaks/gitleaks#installing); refusing to commit unscanned." >&2
+exit 1
