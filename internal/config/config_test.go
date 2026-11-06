@@ -280,15 +280,15 @@ clear_after_s = 90
 	if cfg.HaloAfter != 10*time.Second || cfg.CritterAfter != 20*time.Second || cfg.StaleAfter != 2*time.Hour {
 		t.Fatalf("thresholds: halo %s critter %s stale %s", cfg.HaloAfter, cfg.CritterAfter, cfg.StaleAfter)
 	}
-	if p := cfg.For(category.Permission); p.Color != "#112233" || p.MaxRung != 1 || p.ClearAfter != 0 {
+	if p := cfg.For(category.Permission); p.Color != "#112233" || p.MaxRung != 1 || p.ClearAfter != 3*time.Minute {
 		t.Fatalf("configured category: %+v", p)
 	}
 	// An unconfigured category keeps its built-in colour, rung and timeout.
 	d, _ := category.DefaultFor(category.Error)
-	if got := cfg.For(category.Error); got.Color != d.Color || got.MaxRung != d.MaxRung || got.ClearAfter != 5*time.Minute {
-		t.Fatalf("unconfigured category: %+v, want %s/%d/5m", got, d.Color, d.MaxRung)
+	if got := cfg.For(category.Error); got.Color != d.Color || got.MaxRung != d.MaxRung || got.ClearAfter != 2*time.Minute {
+		t.Fatalf("unconfigured category: %+v, want %s/%d/2m", got, d.Color, d.MaxRung)
 	}
-	// clear_after_s = 0 turns a default timeout off; a prompt category can opt in.
+	// clear_after_s = 0 turns a default timeout off; any other value replaces it.
 	if got := cfg.For(category.Done).ClearAfter; got != 0 {
 		t.Fatalf("done clear_after: %s, want 0", got)
 	}

@@ -28,10 +28,10 @@ func loadConfig(t *testing.T, body string) *config.Config {
 }
 
 func TestBuildSortsResolvesAndDropsStale(t *testing.T) {
-	cfg := loadConfig(t, "[visual]\nstale_after_h = 1\n[categories.done]\ncolor = \"#000001\"\nmax_rung = 1\n")
+	cfg := loadConfig(t, "[visual]\nstale_after_h = 1\n[categories.done]\ncolor = \"#000001\"\nmax_rung = 1\n[categories.error]\nclear_after_s = 0\n")
 	atts := []state.Attention{
 		{SessionID: "new", Category: "done", SinceMS: t0.Add(-time.Minute).UnixMilli(), Label: "b"},
-		{SessionID: "old", Category: "permission", SinceMS: t0.Add(-10 * time.Minute).UnixMilli(), Label: "a"},
+		{SessionID: "old", Category: "permission", SinceMS: t0.Add(-2 * time.Minute).UnixMilli(), Label: "a"},
 		{SessionID: "dead", Category: "error", SinceMS: t0.Add(-2 * time.Hour).UnixMilli()},
 	}
 	snap := Build(atts, cfg, t0)
@@ -47,19 +47,19 @@ func TestBuildSortsResolvesAndDropsStale(t *testing.T) {
 }
 
 func TestBuildDropsTimedOutEntries(t *testing.T) {
-	cfg := loadConfig(t, "[categories.permission]\nclear_after_s = 120\n")
+	cfg := loadConfig(t, "[categories.permission]\nclear_after_s = 0\n")
 	atts := []state.Attention{
-		{SessionID: "done-old", Category: "done", SinceMS: t0.Add(-6 * time.Minute).UnixMilli()},
-		{SessionID: "done-new", Category: "done", SinceMS: t0.Add(-4 * time.Minute).UnixMilli()},
-		{SessionID: "perm-old", Category: "permission", SinceMS: t0.Add(-3 * time.Minute).UnixMilli()},
-		{SessionID: "question", Category: "question", SinceMS: t0.Add(-5 * time.Hour).UnixMilli()},
+		{SessionID: "done-old", Category: "done", SinceMS: t0.Add(-100 * time.Second).UnixMilli()},
+		{SessionID: "done-new", Category: "done", SinceMS: t0.Add(-80 * time.Second).UnixMilli()},
+		{SessionID: "question", Category: "question", SinceMS: t0.Add(-4 * time.Minute).UnixMilli()},
+		{SessionID: "perm-old", Category: "permission", SinceMS: t0.Add(-5 * time.Hour).UnixMilli()},
 	}
 	snap := Build(atts, cfg, t0)
-	if len(snap.Waiting) != 2 || snap.Waiting[0].SessionID != "question" || snap.Waiting[1].SessionID != "done-new" {
-		t.Fatalf("want question then done-new: %+v", snap.Waiting)
+	if len(snap.Waiting) != 2 || snap.Waiting[0].SessionID != "perm-old" || snap.Waiting[1].SessionID != "done-new" {
+		t.Fatalf("want perm-old then done-new: %+v", snap.Waiting)
 	}
-	if q, d := snap.Waiting[0], snap.Waiting[1]; q.ClearAfterMS != 0 || d.ClearAfterMS != (5*time.Minute).Milliseconds() {
-		t.Fatalf("clear_after_ms: question %d, done %d", q.ClearAfterMS, d.ClearAfterMS)
+	if p, d := snap.Waiting[0], snap.Waiting[1]; p.ClearAfterMS != 0 || d.ClearAfterMS != (90*time.Second).Milliseconds() {
+		t.Fatalf("clear_after_ms: permission %d, done %d", p.ClearAfterMS, d.ClearAfterMS)
 	}
 }
 

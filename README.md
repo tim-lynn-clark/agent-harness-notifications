@@ -57,7 +57,7 @@ Bash under x64 emulation, so the launcher runs the x64 build (untested).
 | `cnw doctor` | everything, plus the visual signal | everything but the visual signal | everything but the visual signal, plus Git Bash | as Linux |
 
 The visual signal, the orb and jump are **macOS only for now**. On Linux, Windows and WSL,
-`cnw visual` prints `cnw visual: only macOS is supported so far`, and the `[visual]` keys do
+`cnw visual <subcommand>` prints `cnw visual: only macOS is supported so far`, and the `[visual]` keys do
 nothing; sessions still record that they are waiting, which is harmless. The keys are still
 validated, though: an invalid value is a config error, and a config error silences every sound. A
 Windows version is planned: see [the Windows visual handoff](docs/plans/2026-11-02-windows-visual-handoff.md).
@@ -274,15 +274,17 @@ cnw kokoro remove
 ## Visual signal (macOS)
 
 Opt-in, macOS only (see [Platform support](#platform-support)). While a session waits on you, `cnw`
-also shows it on screen. The signal escalates the longer you leave it, and clears by itself when you
-answer or type your next prompt. A finished turn, error or usage limit needs no answer, so its signal
-also ends after 5 minutes (`clear_after_s`); switching back to the session doesn't clear it:
+also shows it on screen. The signal escalates the longer you leave it, and clears when you answer or
+type your next prompt. It also ends on its own (`clear_after_s`), so it never stays on screen for
+long: a finished turn after 90 seconds, an error or usage limit after 2 minutes, and a prompt
+waiting on an answer after 3 minutes. Switching back to the session doesn't clear it:
 
 | After | You see |
 |---|---|
 | 0 s | A soft glow around the edge of every display, in the category's colour. With several sessions waiting, each edge is split into one colour per session. |
 | 60 s | A halo (a ring around the pointer) with the project and what it needs (`notifier · permission`). |
 | 2 min | A critter comes in from the nearer screen edge, stops below the pointer and holds up a sign with the category and the project name. |
+| 90 s – 3 min | Nothing: the signal ends (`clear_after_s`), and the session leaves the menu bar dot's count and menu too. |
 
 Done, done in the background, error, usage limit and a bare idle reminder stop at the halo; prompts
 and a finished turn with a question go on to the critter. A menu bar dot shows how many sessions
@@ -352,7 +354,8 @@ Visual signal keys (see [Visual signal (macOS)](#visual-signal-macos)):
   `critter` (default `"random"`, or `"blob"`, `"ghost"`, `"cat"`, `"deskbot"`, `"tintoy"`, `"drone"`).
 - Per category: `color` (`"#RRGGBB"`), `max_rung` (1 glow, 2 halo, 3 critter) and `clear_after_s`
   (the signal ends on its own after this many seconds even if you haven't replied; 0 waits for
-  your reply; default 300 for `done`, `done_background`, `error` and `usage_limit`, 0 otherwise).
+  your reply; default 90 for `done` and `done_background`, 120 for `error` and `usage_limit`, 180
+  otherwise).
 
 ```toml
 volume = 0.8
@@ -473,12 +476,13 @@ Known limits:
 ## Development
 
 ```bash
+mise install                          # Go, gitleaks and uv pinned in mise.toml (optional)
 git config core.hooksPath .githooks   # once per clone: gitleaks scans staged changes before each commit
 go test ./...
 ```
 
-The pre-commit hook needs [gitleaks](https://github.com/gitleaks/gitleaks) on `PATH`
-(`brew install gitleaks`) and refuses to commit without it. CI scans the full history on every push
+The pre-commit hook needs [gitleaks](https://github.com/gitleaks/gitleaks) (`mise install` or
+`brew install gitleaks`) and refuses to commit without it. CI scans the full history on every push
 and pull request. Report security issues privately through the repository's **Security** tab.
 
 Design and behaviour: [docs/specs/2026-10-25-notification-wrapper-design.md](docs/specs/2026-10-25-notification-wrapper-design.md);
