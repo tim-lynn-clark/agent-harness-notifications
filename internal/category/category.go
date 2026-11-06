@@ -29,20 +29,25 @@ type Default struct {
 	ClearAfter time.Duration // the visual signal ends this long after it began; 0 never
 }
 
-// passiveClear ends the visual signal of categories with nothing to answer.
-const passiveClear = 5 * time.Minute
+// How long each kind of visual signal lasts before it ends on its own; the
+// attention itself still waits for the user (visual attention spec §4.4).
+const (
+	doneClear   = 90 * time.Second // a finished turn: glow, then a brief halo
+	faultClear  = 2 * time.Minute  // error, usage limit: glow and halo
+	promptClear = 3 * time.Minute  // waiting on an answer: a minute at each rung
+)
 
 var defaults = map[ID]Default{
-	Question:       {Enabled: true, Color: "#22C3E6", MaxRung: 3},
-	PlanApproval:   {Enabled: true, Color: "#9B6BFF", MaxRung: 3},
-	Permission:     {Enabled: true, Color: "#F5A524", MaxRung: 3},
-	MCPInput:       {Enabled: true, Color: "#14B8A6", MaxRung: 3},
-	DoneQuestion:   {Enabled: true, Color: "#22C3E6", MaxRung: 3},
-	Done:           {Enabled: true, Color: "#3FCF6E", MaxRung: 2, ClearAfter: passiveClear},
-	DoneBackground: {Enabled: false, Color: "#3FCF6E", MaxRung: 2, ClearAfter: passiveClear},
-	Error:          {Enabled: true, Color: "#F04444", MaxRung: 2, ClearAfter: passiveClear},
-	UsageLimit:     {Enabled: true, Color: "#E040A0", MaxRung: 2, ClearAfter: passiveClear},
-	IdleReminder:   {Enabled: true, Color: "#F5D90A", MaxRung: 2},
+	Question:       {Enabled: true, Color: "#22C3E6", MaxRung: 3, ClearAfter: promptClear},
+	PlanApproval:   {Enabled: true, Color: "#9B6BFF", MaxRung: 3, ClearAfter: promptClear},
+	Permission:     {Enabled: true, Color: "#F5A524", MaxRung: 3, ClearAfter: promptClear},
+	MCPInput:       {Enabled: true, Color: "#14B8A6", MaxRung: 3, ClearAfter: promptClear},
+	DoneQuestion:   {Enabled: true, Color: "#22C3E6", MaxRung: 3, ClearAfter: promptClear},
+	Done:           {Enabled: true, Color: "#3FCF6E", MaxRung: 2, ClearAfter: doneClear},
+	DoneBackground: {Enabled: false, Color: "#3FCF6E", MaxRung: 2, ClearAfter: doneClear},
+	Error:          {Enabled: true, Color: "#F04444", MaxRung: 2, ClearAfter: faultClear},
+	UsageLimit:     {Enabled: true, Color: "#E040A0", MaxRung: 2, ClearAfter: faultClear},
+	IdleReminder:   {Enabled: true, Color: "#F5D90A", MaxRung: 2, ClearAfter: promptClear},
 }
 
 // All returns every category in spec order.

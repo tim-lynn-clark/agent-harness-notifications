@@ -105,9 +105,9 @@ ElicitationResult, SessionEnd), Stop/StopFailure (prior attention), `CancelMatch
 agent id match), omp `cnw resolve`/`turn-end`. A clear never moves `AttentionClearedMS`
 backwards; a later-arriving set older than the clear is skipped. Stale after `stale_after_h`.
 Since v0.5.1 the *visual signal* (not the attention record) also ends on its own `clear_after_s`
-after `SinceMS` for a category with a timeout: default 300 s for `done`, `done_background`, `error`
-and `usage_limit` (`passiveClear` in `internal/category/category.go`), 0 (never) for the rest
-(macOS spec §4.4).
+after `SinceMS`: by default 90 s for `done` and `done_background`, 120 s for `error` and
+`usage_limit`, 180 s for the rest (`doneClear`, `faultClear`, `promptClear` in
+`internal/category/category.go`); 0 means never (macOS spec §4.4).
 
 ### 2.2 The renderer-neutral contract (consume this; don't change it without a spec change)
 
