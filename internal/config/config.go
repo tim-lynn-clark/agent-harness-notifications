@@ -408,8 +408,8 @@ voice = "Matilda (Premium)"
 # a glow around the screen edge, then a halo around the pointer, then a desk
 # critter, while a session waits on you. Per category: color = "#RRGGBB",
 # max_rung = 1 (glow), 2 (halo) or 3 (critter), clear_after_s = seconds until
-# the visual signal ends on its own (0: only when you reply; default 300 for
-# done, done_background, error and usage_limit, 0 for the rest).
+# the visual signal ends on its own (0: only when you reply; default 90 for
+# done and done_background, 120 for error and usage_limit, 180 for the rest).
 # critter = "random" (a different one each time), "blob", "ghost", "cat",
 # "deskbot", "tintoy" or "drone"; list them: cnw visual critters
 # [visual]

@@ -97,12 +97,13 @@ A session that dies without SessionEnd would otherwise wait forever. Attentions 
 `visual.stale_after_h` (default 6) are dropped: the snapshot (§4.5) omits them when written, and
 the renderer drops them using `stale_after_ms` as time passes. The session file is left alone.
 
-Returning to a session (focusing its terminal or Orca pane) is invisible to cnw, so a finished turn
-would otherwise glow until the next prompt. Each category's `clear_after_s` ends its visual signal
-that long after `SinceMS`, the same way: the snapshot omits the entry and carries it as
-`clear_after_ms` so the renderer drops it as time passes; the attention and the session file are
-left alone. Default 300 for done, done_background, error and usage_limit; 0 (never) for the rest,
-which are waiting on an answer.
+Returning to a session (focusing its terminal or Orca pane) is invisible to cnw, so a signal would
+otherwise stay on screen until the next prompt or answer. Each category's `clear_after_s` ends its
+visual signal that long after `SinceMS`, the same way: the snapshot omits the entry and carries it
+as `clear_after_ms` so the renderer drops it as time passes; the attention and the session file are
+left alone. Defaults: 90 for done and done_background (glow, then 30 s of halo), 120 for error and
+usage_limit (glow, then a minute of halo), 180 for the rest, which are waiting on an answer (a
+minute at each rung). 0 keeps the signal until the attention clears.
 
 ### 4.5 Snapshot
 
@@ -276,7 +277,7 @@ critter         = "random"   # or blob, ghost, cat, deskbot, tintoy, drone
 [categories.permission]
 color         = "#F5A524"
 max_rung      = 3
-clear_after_s = 0
+clear_after_s = 180
 ```
 
 Validation, consistent with the existing keys:
