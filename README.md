@@ -283,7 +283,7 @@ waiting on an answer after 3 minutes. Switching back to the session doesn't clea
 |---|---|
 | 0 s | A soft glow around the edge of every display, in the category's colour. With several sessions waiting, each edge is split into one colour per session. |
 | 60 s | A halo (a ring around the pointer) with the project and what it needs (`notifier · permission`). |
-| 2 min | A critter comes in from the nearer screen edge, stops below the pointer and holds up a sign with the category and the project name. |
+| 2 min | A critter comes in from the nearer screen edge, stops below the pointer (at most a third of the way across the screen) and holds up a sign with the category and the project name. |
 | 90 s – 3 min | Nothing: the signal ends (`clear_after_s`), and the session leaves the menu bar dot's count and menu too. |
 
 Done, done in the background, error, usage limit and a bare idle reminder stop at the halo; prompts
