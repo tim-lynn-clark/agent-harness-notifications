@@ -623,12 +623,14 @@ function critterBuild(id, e, o) {
   return { overlay: o, box: box, def: def, parts: parts, left: left, right: right, gone: false };
 }
 
-// critterArrive adds c to its overlay and brings it to rest below pointer x px.
+// critterArrive adds c to its overlay and brings it to rest below pointer x px,
+// but no more than a third of the display's width in from the edge it enters at.
 function critterArrive(c, px, reduce) {
   const W = c.overlay.frame.w;
-  const x = Math.min(Math.max(px, CRITTER_MARGIN + c.left), W - CRITTER_MARGIN - c.right);
-  const lift = c.def.lift;
   const fromLeft = px < W / 2;
+  const reach = fromLeft ? Math.min(px, W / 3) : Math.max(px, (2 * W) / 3);
+  const x = Math.min(Math.max(reach, CRITTER_MARGIN + c.left), W - CRITTER_MARGIN - c.right);
+  const lift = c.def.lift;
   c.overlay.root.addSublayer(c.box);
   if (reduce) {
     noAnim(() => c.box.setPosition($.NSMakePoint(x, lift)));
